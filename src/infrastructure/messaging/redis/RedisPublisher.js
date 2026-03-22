@@ -15,10 +15,18 @@ export default class RedisPublisher {
   async publish(channel, message) {
     if (!channel || !message) throw new Error("Channel and message are required");
     const payload = typeof message === "string" ? message : JSON.stringify(message);
-    await this.redis.publish(channel, payload);
+    try {      await this.redis.publish(channel, payload);
+    } catch (error) {
+      console.error("Error publishing to Redis:", error);
+      throw error;
+    }
   }
 
   async disconnect() {
-    await this.redis.quit();
+    try {
+      await this.redis.quit();
+    } catch (error) {
+      console.error("Error disconnecting from Redis:", error);
+    }
   }
 }
