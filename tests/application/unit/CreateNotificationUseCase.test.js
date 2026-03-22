@@ -20,7 +20,6 @@ describe("CreateNotificationUseCase", () => {
     );
 
     const data = {
-      id: "1",
       recipient: "user@test.com",
       message: "Hello",
       channel: "EMAIL",
@@ -29,16 +28,20 @@ describe("CreateNotificationUseCase", () => {
 
     const result = await useCase.execute(data);
 
-    // verify saved
-    const saved = await repo.findById("1");
+    // ✅ verify saved (usa ID generato)
+    const saved = await repo.findById(result.id);
     expect(saved).not.toBeNull();
 
-    // verify event
+    // ✅ verify event
     expect(fakePublisher.events.length).toBe(1);
     expect(fakePublisher.events[0].topic).toBe("notification.created");
 
-    // verify return
-    expect(result.id).toBe("1");
+    // ✅ verify payload evento (molto importante)
+    expect(fakePublisher.events[0].payload.id).toBe(result.id);
+
+    // ✅ verify return
+    expect(result.id).toBeDefined();
+    expect(result.message).toBe("Hello");
 
   });
 
