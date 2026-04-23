@@ -79,7 +79,7 @@ Rendere il sistema asincrono e disaccoppiato.
 
 ---
 
-# 🚀 EPIC 4 — Worker Processing
+# EPIC 4 — Worker Processing
 
 ## Obiettivo
 Processare notifiche asincrone.
