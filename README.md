@@ -32,8 +32,6 @@ src/
 ├── application     # Use cases and orchestration
 ├── infrastructure  # External systems (DB, Redis, providers)
 ├── interfaces      # HTTP layer (controllers, routes)
-├── workers         # Background processing
-└── shared          # Utilities, errors, constants
 ```
 
 ### Layers Description
