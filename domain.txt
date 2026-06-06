@@ -1,0 +1,621 @@
+\n===== src/domain/entities/Notification.js =====\n
+// src/domain/entities/Notification.js
+
+import NotificationStatus from "../value-objects/NotificationStatus.js";
+import Channel from "../value-objects/Channel.js";
+import Priority from "../value-objects/Priority.js";
+
+export default class Notification {
+
+  #id;
+  #recipient;
+  #message;
+  #channel;
+  #priority;
+  #status;
+  #createdAt;
+  #sentAt;
+  #failedAt;
+
+  constructor({ id, recipient, message, channel, priority, status, createdAt, sentAt, failedAt }) {
+    if (!id) throw new Error("Notification id is required");
+    if (!recipient) throw new Error("Recipient is required");
+    if (!message) throw new Error("Message is required");
+
+    this.#id = id;
+    this.#recipient = recipient;
+    this.#message = message;
+
+    this.#channel = channel instanceof Channel ? channel : new Channel(channel);
+    this.#priority = priority instanceof Priority ? priority : new Priority(priority);
+    this.#status = status instanceof NotificationStatus ? status : NotificationStatus.pending();
+
+    this.#createdAt = createdAt || new Date();
+    this.#sentAt = sentAt || null;
+    this.#failedAt = failedAt || null;
+
+    Object.freeze(this); // rende l'oggetto immutabile
+  }
+
+  // Getters
+  get id() { return this.#id; }
+  get recipient() { return this.#recipient; }
+  get message() { return this.#message; }
+  get channel() { return this.#channel; }
+  get priority() { return this.#priority; }
+  get status() { return this.#status; }
+  get createdAt() { return this.#createdAt; }
+  get sentAt() { return this.#sentAt; }
+  get failedAt() { return this.#failedAt; }
+
+  // Domain behaviors
+  #assertTransition(targetStatus) {
+    if (!this.#status.canTransitionTo(targetStatus)) {
+      throw new Error(
+        `Invalid transition from ${this.#status.value} to ${targetStatus.value}`
+      );
+    }
+  }
+
+  markAsSent() {
+    const target = NotificationStatus.sent();
+
+    this.#assertTransition(target);
+
+    return new Notification({
+      id: this.#id,
+      recipient: this.#recipient,
+      message: this.#message,
+      channel: this.#channel,
+      priority: this.#priority,
+      status: target,
+      createdAt: this.#createdAt,
+      sentAt: new Date(),
+      failedAt: this.#failedAt,
+    });
+  }
+
+  markAsFailed() {
+    const target = NotificationStatus.failed();
+
+    this.#assertTransition(target);
+
+    return new Notification({
+      id: this.#id,
+      recipient: this.#recipient,
+      message: this.#message,
+      channel: this.#channel,
+      priority: this.#priority,
+      status: target,
+      createdAt: this.#createdAt,
+      sentAt: this.#sentAt,
+      failedAt: new Date(),
+    });
+  }
+
+  markAsProcessing() {
+    const target = NotificationStatus.processing();
+
+    this.#assertTransition(target);
+
+    return new Notification({
+      id: this.#id,
+      recipient: this.#recipient,
+      message: this.#message,
+      channel: this.#channel,
+      priority: this.#priority,
+      status: target,
+      createdAt: this.#createdAt,
+      sentAt: this.#sentAt,
+      failedAt: this.#failedAt,
+    });
+  }
+
+  markAsDead() {
+    const target = NotificationStatus.dead();
+
+    this.#assertTransition(target);
+
+    return new Notification({
+      id: this.#id,
+      recipient: this.#recipient,
+      message: this.#message,
+      channel: this.#channel,
+      priority: this.#priority,
+      status: target,
+      createdAt: this.#createdAt,
+      sentAt: this.#sentAt,
+      failedAt: this.#failedAt,
+    });
+  }
+
+  retry() {
+    const target = NotificationStatus.retrying();
+
+    this.#assertTransition(target);
+
+    return new Notification({
+      id: this.#id,
+      recipient: this.#recipient,
+      message: this.#message,
+      channel: this.#channel,
+      priority: this.#priority,
+      status: target,
+      createdAt: this.#createdAt,
+      sentAt: this.#sentAt,
+      failedAt: this.#failedAt,
+    });
+  }
+
+  // Comparazione tra notifiche (Value Object-style)
+  equals(other) {
+    if (!(other instanceof Notification)) return false;
+    return this.#id === other.id;
+  }
+
+}\n===== src/domain/events/NotificationCreated.js =====\n
+// src/domain/events/NotificationCreated.js
+
+import { EventCodes } from "../constants/EventCodes.js";
+
+export default class NotificationCreated {
+
+  #id;
+  #recipient;
+  #message;
+  #channel;
+  #priority;
+  #createdAt;
+
+  constructor({
+    id,
+    recipient,
+    message,
+    channel,
+    priority,
+    createdAt,
+  }) {
+    if (!id) {
+      throw new Error("Event must have id");
+    }
+
+    if (!recipient) {
+      throw new Error("Event must have recipient");
+    }
+
+    this.#id = id;
+    this.#recipient = recipient;
+    this.#message = message;
+    this.#channel = channel;
+    this.#priority = priority;
+    this.#createdAt = createdAt || new Date();
+
+    Object.freeze(this);
+  }
+
+  get id() {
+    return this.#id;
+  }
+
+  get recipient() {
+    return this.#recipient;
+  }
+
+  get message() {
+    return this.#message;
+  }
+
+  get channel() {
+    return this.#channel;
+  }
+
+  get priority() {
+    return this.#priority;
+  }
+
+  get createdAt() {
+    return this.#createdAt;
+  }
+
+  toJSON() {
+    return {
+      eventName: "notification.created",
+      eventCode: EventCodes.NOTIFICATION_CREATED,
+
+      id: this.#id,
+      recipient: this.#recipient,
+      message: this.#message,
+
+      channel:
+        this.#channel?.value ||
+        this.#channel,
+
+      priority:
+        this.#priority?.value ||
+        this.#priority,
+
+      createdAt: this.#createdAt,
+    };
+  }
+}\n===== src/domain/events/NotificationSent.js =====\n
+// src/domain/events/NotificationSent.js
+
+import { EventCodes } from "../constants/EventCodes.js";
+
+export default class NotificationSent {
+
+  #notificationId;
+  #occurredAt;
+
+  constructor(notificationId) {
+    if (!notificationId) {
+      throw new Error("Notification id is required");
+    }
+
+    this.#notificationId = notificationId;
+    this.#occurredAt = new Date();
+
+    Object.freeze(this);
+  }
+
+  get notificationId() {
+    return this.#notificationId;
+  }
+
+  get occurredAt() {
+    return this.#occurredAt;
+  }
+
+  toJSON() {
+    return {
+      eventName: "notification.sent",
+      eventCode: EventCodes.NOTIFICATION_SENT,
+
+      notificationId: this.#notificationId,
+      occurredAt: this.#occurredAt,
+    };
+  }
+}\n===== src/domain/events/NotificationFailed.js =====\n
+// src/domain/events/NotificationFailed.js
+
+import { EventCodes } from "../constants/EventCodes.js";
+
+export default class NotificationFailed {
+
+  #notificationId;
+  #occurredAt;
+
+  constructor(notificationId) {
+    if (!notificationId) {
+      throw new Error("Notification id is required");
+    }
+
+    this.#notificationId = notificationId;
+    this.#occurredAt = new Date();
+
+    Object.freeze(this);
+  }
+
+  get notificationId() {
+    return this.#notificationId;
+  }
+
+  get occurredAt() {
+    return this.#occurredAt;
+  }
+
+  toJSON() {
+    return {
+      eventName: "notification.failed",
+      eventCode: EventCodes.NOTIFICATION_FAILED,
+
+      notificationId: this.#notificationId,
+      occurredAt: this.#occurredAt,
+    };
+  }
+}\n===== src/domain/events/NotificationRetryScheduled.js =====\n
+// src/domain/events/NotificationRetryScheduled.js
+
+import { EventCodes } from "../constants/EventCodes.js";
+
+export default class NotificationRetryScheduled {
+
+  #notificationId;
+  #occurredAt;
+
+  constructor(notificationId) {
+    if (!notificationId) {
+      throw new Error("Notification id is required");
+    }
+
+    this.#notificationId = notificationId;
+    this.#occurredAt = new Date();
+
+    Object.freeze(this);
+  }
+
+  get notificationId() {
+    return this.#notificationId;
+  }
+
+  get occurredAt() {
+    return this.#occurredAt;
+  }
+
+  toJSON() {
+    return {
+      eventName: "notification.retry",
+      eventCode: EventCodes.NOTIFICATION_RETRY,
+
+      notificationId: this.#notificationId,
+      occurredAt: this.#occurredAt,
+    };
+  }
+}\n===== src/domain/repositories/NotificationRepository.js =====\n
+// src/domain/repositories/NotificationRepository.js
+
+export default class NotificationRepository {
+
+  /**
+   * Salva una nuova notifica
+   * @param {Notification} notification
+   */
+  async save(notification) {
+    throw new Error("save() not implemented");
+  }
+
+  /**
+   * Aggiorna una notifica esistente
+   * @param {Notification} notification
+   */
+  async update(notification) {
+    throw new Error("update() not implemented");
+  }
+
+  /**
+   * Trova una notifica per ID
+   * @param {string} id
+   * @returns {Notification|null}
+   */
+  async findById(id) {
+    throw new Error("findById() not implemented");
+  }
+
+  /**
+   * Lista notifiche per destinatario
+   * @param {string} recipient
+   * @returns {Notification[]}
+   */
+  async findByRecipient(recipient) {
+    throw new Error("findByRecipient() not implemented");
+  }
+
+}\n===== src/domain/services/NotificationDomainService.js =====\n
+\n===== src/domain/value-objects/Channel.js =====\n
+// src/domain/value-objects/Channel.js
+const VALID_CHANNELS = Object.freeze([
+  "EMAIL",
+  "SMS",
+  "PUSH"
+]);
+
+export default class Channel {
+
+  #value;
+
+  constructor(value) {
+    if (!VALID_CHANNELS.includes(value)) {
+      throw new Error(`Invalid Channel: ${value}`);
+    }
+    this.#value = value;
+    Object.freeze(this);
+  }
+
+  get value() {
+    return this.#value;
+  }
+
+  static email() { return new Channel("EMAIL"); }
+  static sms() { return new Channel("SMS"); }
+  static push() { return new Channel("PUSH"); }
+
+  equals(other) {
+    if (!(other instanceof Channel)) return false;
+    return this.#value === other.value;
+  }
+
+}\n===== src/domain/value-objects/NotificationStatus.js =====\n
+// src/domain/value-objects/NotificationStatus.js
+
+import { NotificationCodes } from "../constants/NotificationCodes.js";
+
+const VALID_STATUSES = Object.freeze([
+  "PENDING",
+  "PROCESSING",
+  "SENT",
+  "FAILED",
+  "RETRYING",
+  "DEAD",
+]);
+
+const ALLOWED_TRANSITIONS = Object.freeze({
+  PENDING: ["PROCESSING"],
+
+  PROCESSING: [
+    "SENT",
+    "FAILED",
+  ],
+
+  FAILED: [
+    "RETRYING",
+    "DEAD",
+  ],
+
+  RETRYING: [
+    "PROCESSING",
+  ],
+
+  SENT: [],
+
+  DEAD: [],
+});
+
+export default class NotificationStatus {
+
+  #value;
+
+  constructor(value) {
+    if (!VALID_STATUSES.includes(value)) {
+      throw new Error(`Invalid NotificationStatus: ${value}`);
+    }
+
+    this.#value = value;
+
+    Object.freeze(this);
+  }
+
+  get value() {
+    return this.#value;
+  }
+
+  get code() {
+    return NotificationCodes[this.#value];
+  }
+
+  canTransitionTo(targetStatus) {
+    const target =
+      targetStatus instanceof NotificationStatus
+        ? targetStatus.value
+        : targetStatus;
+
+    return ALLOWED_TRANSITIONS[this.#value].includes(target);
+  }
+
+  equals(other) {
+    return (
+      other instanceof NotificationStatus &&
+      other.value === this.#value
+    );
+  }
+
+  static pending() {
+    return new NotificationStatus("PENDING");
+  }
+
+  static processing() {
+    return new NotificationStatus("PROCESSING");
+  }
+
+  static sent() {
+    return new NotificationStatus("SENT");
+  }
+
+  static failed() {
+    return new NotificationStatus("FAILED");
+  }
+
+  static retrying() {
+    return new NotificationStatus("RETRYING");
+  }
+
+  static dead() {
+    return new NotificationStatus("DEAD");
+  }
+
+  static canTransition(from, to) {
+    const source =
+      from instanceof NotificationStatus
+        ? from.value
+        : from;
+
+    const target =
+      to instanceof NotificationStatus
+        ? to.value
+        : to;
+
+    return ALLOWED_TRANSITIONS[source]?.includes(target);
+  }
+}\n===== src/domain/value-objects/Priority.js =====\n
+// src/domain/value-objects/Priority.js
+
+const VALID_PRIORITIES = Object.freeze([
+  "LOW",
+  "MEDIUM",
+  "HIGH",
+  "CRITICAL",
+]);
+
+export default class Priority {
+
+  #value;
+
+  constructor(value) {
+    if (!VALID_PRIORITIES.includes(value)) {
+      throw new Error(`Invalid Priority: ${value}`);
+    }
+
+    this.#value = value;
+
+    Object.freeze(this);
+  }
+
+  get value() {
+    return this.#value;
+  }
+
+  static low() {
+    return new Priority("LOW");
+  }
+
+  static medium() {
+    return new Priority("MEDIUM");
+  }
+
+  static high() {
+    return new Priority("HIGH");
+  }
+
+  static critical() {
+    return new Priority("CRITICAL");
+  }
+
+  equals(other) {
+    return (
+      other instanceof Priority &&
+      other.value === this.#value
+    );
+  }
+}\n===== src/domain/constants/NotificationCodes.js =====\n
+// src/domain/constants/NotificationCodes.js
+
+export const NotificationCodes = Object.freeze({
+
+  PENDING: "NTF-001",
+  PROCESSING: "NTF-002",
+  SENT: "NTF-003",
+  FAILED: "NTF-004",
+  RETRYING: "NTF-005",
+  DEAD: "NTF-006",
+
+});\n===== src/domain/constants/ErrorCodes.js =====\n
+// src/domain/constants/ErrorCodes.js
+
+export const ErrorCodes = Object.freeze({
+
+  VALIDATION_ERROR: "ERR-001",
+  PROVIDER_ERROR: "ERR-002",
+  DATABASE_ERROR: "ERR-003",
+  NETWORK_ERROR: "ERR-004",
+  UNKNOWN_ERROR: "ERR-005",
+
+});\n===== src/domain/constants/EventCodes.js =====\n
+// src/domain/constants/EventCodes.js
+
+export const EventCodes = Object.freeze({
+
+  NOTIFICATION_CREATED: "EVT-001",
+  NOTIFICATION_SENT: "EVT-002",
+  NOTIFICATION_FAILED: "EVT-003",
+  NOTIFICATION_RETRY: "EVT-004",
+
+});

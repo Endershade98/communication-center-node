@@ -1,7 +1,9 @@
 // src/domain/entities/Notification.js
+
 import NotificationStatus from "../value-objects/NotificationStatus.js";
 import Channel from "../value-objects/Channel.js";
 import Priority from "../value-objects/Priority.js";
+import NotificationCreated from "../events/NotificationCreated.js";
 
 export default class Notification {
 
@@ -15,7 +17,20 @@ export default class Notification {
   #sentAt;
   #failedAt;
 
-  constructor({ id, recipient, message, channel, priority, status, createdAt, sentAt, failedAt }) {
+  // EVENT BUFFER 
+  #domainEvents = [];
+
+  constructor({
+    id,
+    recipient,
+    message,
+    channel,
+    priority,
+    status,
+    createdAt,
+    sentAt,
+    failedAt
+  }) {
     if (!id) throw new Error("Notification id is required");
     if (!recipient) throw new Error("Recipient is required");
     if (!message) throw new Error("Message is required");
@@ -26,16 +41,21 @@ export default class Notification {
 
     this.#channel = channel instanceof Channel ? channel : new Channel(channel);
     this.#priority = priority instanceof Priority ? priority : new Priority(priority);
-    this.#status = status instanceof NotificationStatus ? status : NotificationStatus.pending();
+    this.#status = status instanceof NotificationStatus
+      ? status
+      : NotificationStatus.pending();
 
     this.#createdAt = createdAt || new Date();
     this.#sentAt = sentAt || null;
     this.#failedAt = failedAt || null;
 
-    Object.freeze(this); // rende l'oggetto immutabile
+    Object.freeze(this);
   }
 
-  // Getters
+  // =========================
+  // GETTERS
+  // =========================
+
   get id() { return this.#id; }
   get recipient() { return this.#recipient; }
   get message() { return this.#message; }
@@ -46,66 +66,134 @@ export default class Notification {
   get sentAt() { return this.#sentAt; }
   get failedAt() { return this.#failedAt; }
 
-  // Domain behaviors
+  // =========================
+  // DOMAIN EVENTS
+  // =========================
+
+  get domainEvents() {
+    return [...this.#domainEvents];
+  }
+
+  clearEvents() {
+    this.#domainEvents = [];
+  }
+
+  // =========================
+  // FACTORY METHOD (KEY CHANGE)
+  // =========================
+
+  static create({ id, recipient, message, channel, priority }) {
+    const notification = new Notification({
+      id,
+      recipient,
+      message,
+      channel,
+      priority,
+      status: NotificationStatus.pending(),
+      createdAt: new Date(),
+    });
+
+    // domain event generated here
+    notification.#addDomainEvent(
+      new NotificationCreated({
+        id,
+        recipient,
+        message,
+        channel: notification.#channel,
+        priority: notification.#priority,
+        createdAt: notification.#createdAt,
+      })
+    );
+
+    return notification;
+  }
+
+  // =========================
+  // PRIVATE EVENT HANDLING
+  // =========================
+
+  #addDomainEvent(event) {
+    this.#domainEvents.push(event);
+  }
+
+  // =========================
+  // STATE MACHINE METHODS
+  // =========================
+
+  #assertTransition(targetStatus) {
+    if (!this.#status.canTransitionTo(targetStatus)) {
+      throw new Error(
+        `Invalid transition from ${this.#status.value} to ${targetStatus.value}`
+      );
+    }
+  }
+
+  markAsProcessing() {
+    const target = NotificationStatus.processing();
+    this.#assertTransition(target);
+
+    return this.#clone({
+      status: target,
+    });
+  }
 
   markAsSent() {
-    if (this.#status.equals(NotificationStatus.sent())) {
-      throw new Error("Notification already sent");
-    }
+    const target = NotificationStatus.sent();
+    this.#assertTransition(target);
 
-    return new Notification({
-      id: this.#id,
-      recipient: this.#recipient,
-      message: this.#message,
-      channel: this.#channel,
-      priority: this.#priority,
-      status: NotificationStatus.sent(),
-      createdAt: this.#createdAt,
+    return this.#clone({
+      status: target,
       sentAt: new Date(),
-      failedAt: this.#failedAt
     });
   }
 
   markAsFailed() {
-    if (this.#status.equals(NotificationStatus.failed())) {
-      throw new Error("Notification already failed");
-    }
+    const target = NotificationStatus.failed();
+    this.#assertTransition(target);
 
-    return new Notification({
-      id: this.#id,
-      recipient: this.#recipient,
-      message: this.#message,
-      channel: this.#channel,
-      priority: this.#priority,
-      status: NotificationStatus.failed(),
-      createdAt: this.#createdAt,
-      sentAt: this.#sentAt,
-      failedAt: new Date()
+    return this.#clone({
+      status: target,
+      failedAt: new Date(),
+    });
+  }
+
+  markAsDead() {
+    const target = NotificationStatus.dead();
+    this.#assertTransition(target);
+
+    return this.#clone({
+      status: target,
     });
   }
 
   retry() {
-    if (!this.#status.equals(NotificationStatus.failed())) {
-      throw new Error("Only failed notifications can be retried");
-    }
+    const target = NotificationStatus.retrying();
+    this.#assertTransition(target);
 
+    return this.#clone({
+      status: target,
+    });
+  }
+
+  // =========================
+  // IMMUTABLE CLONE HELPER
+  // =========================
+
+  #clone(overrides = {}) {
     return new Notification({
       id: this.#id,
       recipient: this.#recipient,
       message: this.#message,
       channel: this.#channel,
       priority: this.#priority,
-      status: NotificationStatus.retrying(),
+      status: overrides.status || this.#status,
       createdAt: this.#createdAt,
-      sentAt: this.#sentAt,
-      failedAt: this.#failedAt
+      sentAt: overrides.sentAt ?? this.#sentAt,
+      failedAt: overrides.failedAt ?? this.#failedAt,
     });
   }
 
-  // Comparazione tra notifiche (Value Object-style)
   equals(other) {
-    if (!(other instanceof Notification)) return false;
-    return this.#id === other.id;
+    return other instanceof Notification && this.#id === other.id;
   }
-
 }

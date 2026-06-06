@@ -1,24 +1,23 @@
+// src/application/use-cases/CreateNotificationUseCase.js
+
 import { randomUUID } from "crypto";
 import Notification from "../../domain/entities/Notification.js";
-import Channel from "../../domain/value-objects/Channel.js";
-import Priority from "../../domain/value-objects/Priority.js";
-import NotificationStatus from "../../domain/value-objects/NotificationStatus.js";
 
 export default class CreateNotificationUseCase {
+
   constructor(notificationRepository, eventPublisher) {
     this.notificationRepository = notificationRepository;
     this.eventPublisher = eventPublisher;
   }
 
   async execute({ recipient, message, channel, priority }) {
-    const notification = new Notification({
-      id: randomUUID(), // ✅ FIX CRITICO
+
+    const notification = Notification.create({
+      id: randomUUID(),
       recipient,
       message,
-      channel: new Channel(channel),
-      priority: new Priority(priority),
-      status: new NotificationStatus("PENDING"),
-      createdAt: new Date(),
+      channel,
+      priority,
     });
 
     await this.notificationRepository.save(notification);

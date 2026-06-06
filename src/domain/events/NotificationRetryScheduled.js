@@ -1,8 +1,8 @@
-// src/domain/events/NotificationSent.js
+// src/domain/events/NotificationRetryScheduled.js
 
 import { EventCodes } from "../constants/EventCodes.js";
 
-export default class NotificationSent {
+export default class NotificationRetryScheduled {
 
   #notificationId;
   #occurredAt;
@@ -28,8 +28,8 @@ export default class NotificationSent {
 
   toJSON() {
     return {
-      eventName: "notification.sent",
-      eventCode: EventCodes.NOTIFICATION_SENT,
+      eventName: "notification.retry",
+      eventCode: EventCodes.NOTIFICATION_RETRY,
 
       notificationId: this.#notificationId,
       occurredAt: this.#occurredAt,
