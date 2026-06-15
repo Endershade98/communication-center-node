@@ -10,13 +10,13 @@ export default class CreateNotificationUseCase {
     this.dispatcher = new DomainEventDispatcher(eventPublisher);
   }
 
-  async execute({ recipient, message, channel, priority }) {
+  async execute(dto) {
     const notification = Notification.create({
       id: randomUUID(),
-      recipient,
-      message,
-      channel,
-      priority,
+      recipient: dto.recipient,
+      message: dto.message,
+      channel: dto.channel,
+      priority: dto.priority,
     });
 
     await this.notificationRepository.save(notification);
