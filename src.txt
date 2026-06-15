@@ -13,6 +13,49 @@ export const prisma =
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
+}\n===== src/infrastructure/mappers/NotificationMapper.js =====\n
+// src/infrastructure/mappers/NotificationMapper.js
+
+import Notification from "../../domain/entities/Notification.js";
+import NotificationStatus from "../../domain/value-objects/NotificationStatus.js";
+import Channel from "../../domain/value-objects/Channel.js";
+import Priority from "../../domain/value-objects/Priority.js";
+
+export default class NotificationMapper {
+  static toPersistence(notification) {
+    return {
+      id: notification.id,
+      recipient: notification.recipient,
+      message: notification.message,
+      channel: notification.channel.value,
+      priority: notification.priority.value,
+      status: notification.status.value,
+      createdAt: notification.createdAt,
+      sentAt: notification.sentAt,
+      failedAt: notification.failedAt,
+    };
+  }
+
+  static toDomain(record) {
+    if (!record) return null;
+
+    return new Notification({
+      id: record.id,
+      recipient: record.recipient,
+      message: record.message,
+      channel: new Channel(record.channel),
+      priority: new Priority(record.priority),
+      status: new NotificationStatus(record.status),
+      createdAt: record.createdAt,
+      sentAt: record.sentAt,
+      failedAt: record.failedAt,
+    });
+  }
+
+  static toDomainList(records) {
+    if (!Array.isArray(records)) return [];
+    return records.map(r => this.toDomain(r)).filter(Boolean);
+  }
 }\n===== src/infrastructure/messaging/redis/RedisPublisher.js =====\n
 // src/infrastructure/messaging/redis/RedisPublisher.js
 
@@ -132,52 +175,51 @@ export default class NotificationRepositoryMySQL {
   async update(notification) {
     return this.save(notification);
   }
-}\n===== src/infrastructure/mappers/NotificationMapper.js =====\n
-// src/infrastructure/mappers/NotificationMapper.js
+}\n===== src/application/dto/NotificationResponseDTO.js =====\n
+// src/application/dto/NotificationResponseDTO.js
 
-import Notification from "../../domain/entities/Notification.js";
-import NotificationStatus from "../../domain/value-objects/NotificationStatus.js";
-import Channel from "../../domain/value-objects/Channel.js";
-import Priority from "../../domain/value-objects/Priority.js";
-
-export default class NotificationMapper {
-  static toPersistence(notification) {
-    return {
-      id: notification.id,
-      recipient: notification.recipient,
-      message: notification.message,
-      channel: notification.channel.value,
-      priority: notification.priority.value,
-      status: notification.status.value,
-      createdAt: notification.createdAt,
-      sentAt: notification.sentAt,
-      failedAt: notification.failedAt,
-    };
+export default class NotificationResponseDTO {
+  constructor(notification) {
+    this.id = notification.id;
+    this.recipient = notification.recipient;
+    this.message = notification.message;
+    this.channel = notification.channel.value;
+    this.priority = notification.priority.value;
+    this.status = notification.status.value;
+    this.createdAt = notification.createdAt;
+    this.sentAt = notification.sentAt;
+    this.failedAt = notification.failedAt;
   }
 
-  static toDomain(record) {
-    if (!record) return null;
+  static fromDomain(notification) {
+    if (!notification) return null;
+    return new NotificationResponseDTO(notification);
+  }
+}\n===== src/application/dto/SendNotificationDTO.js =====\n
+// src/application/dto/SendNotificationDTO.js
 
-    return new Notification({
-      id: record.id,
-      recipient: record.recipient,
-      message: record.message,
-      channel: new Channel(record.channel),
-      priority: new Priority(record.priority),
-      status: new NotificationStatus(record.status),
-      createdAt: record.createdAt,
-      sentAt: record.sentAt,
-      failedAt: record.failedAt,
+export default class SendNotificationDTO {
+  constructor({ recipient, message, channel, priority }) {
+    if (!recipient) throw new Error("recipient is required");
+    if (!message) throw new Error("message is required");
+    if (!channel) throw new Error("channel is required");
+    if (!priority) throw new Error("priority is required");
+
+    this.recipient = recipient;
+    this.message = message;
+    this.channel = channel;
+    this.priority = priority;
+  }
+
+  static fromHttp(body) {
+    return new SendNotificationDTO({
+      recipient: body.recipient,
+      message: body.message,
+      channel: body.channel,
+      priority: body.priority,
     });
   }
-
-  static toDomainList(records) {
-    if (!Array.isArray(records)) return [];
-    return records.map(r => this.toDomain(r)).filter(Boolean);
-  }
-}\n===== src/application/dto/NotificationResponseDTO.js =====\n
-\n===== src/application/dto/SendNotificationDTO.js =====\n
-\n===== src/application/services/DomainEventDispatcher.js =====\n
+}\n===== src/application/services/DomainEventDispatcher.js =====\n
 // src/application/services/DomainEventDispatcher.js
 
 export default class DomainEventDispatcher {
@@ -208,13 +250,13 @@ export default class CreateNotificationUseCase {
     this.dispatcher = new DomainEventDispatcher(eventPublisher);
   }
 
-  async execute({ recipient, message, channel, priority }) {
+  async execute(dto) {
     const notification = Notification.create({
       id: randomUUID(),
-      recipient,
-      message,
-      channel,
-      priority,
+      recipient: dto.recipient,
+      message: dto.message,
+      channel: dto.channel,
+      priority: dto.priority,
     });
 
     await this.notificationRepository.save(notification);
@@ -227,7 +269,93 @@ export default class CreateNotificationUseCase {
   }
 }\n===== src/application/use-cases/GetNotificationStatus.js =====\n
 \n===== src/application/use-cases/RetryNotification.js =====\n
-\n===== src/domain/entities/Notification.js =====\n
+\n===== src/application/use-cases/GetNotificationByIdUseCase.js =====\n
+// src/application/use-cases/GetNotificationByIdUseCase.js
+
+export default class GetNotificationByIdUseCase {
+  constructor(notificationRepository) {
+    this.notificationRepository = notificationRepository;
+  }
+
+  async execute(id) {
+    if (!id) {
+      throw new Error("id is required");
+    }
+
+    const notification = await this.notificationRepository.findById(id);
+
+    if (!notification) {
+      throw new Error("Notification not found");
+    }
+
+    return notification;
+  }
+}\n===== src/bootstrap/container.js =====\n
+// src/bootstrap/container.js
+
+import { prisma }
+from "../infrastructure/database/prismaClient.js";
+
+import NotificationRepositoryMySQL
+from "../infrastructure/repositories/NotificationRepositoryMySQL.js";
+
+import NotificationRepositoryInMemory
+from "../infrastructure/repositories/NotificationRepositoryInMemory.js";
+
+import RedisPublisher
+from "../infrastructure/messaging/redis/RedisPublisher.js";
+
+export function createContainer() {
+
+  const isTest =
+    process.env.NODE_ENV === "test";
+
+  const notificationRepository =
+    isTest
+      ? new NotificationRepositoryInMemory()
+      : new NotificationRepositoryMySQL(prisma);
+
+  const eventPublisher =
+    new RedisPublisher();
+
+  return {
+    notificationRepository,
+    eventPublisher
+  };
+}\n===== src/domain/constants/ErrorCodes.js =====\n
+// src/domain/constants/ErrorCodes.js
+
+export const ErrorCodes = Object.freeze({
+
+  VALIDATION_ERROR: "ERR-001",
+  PROVIDER_ERROR: "ERR-002",
+  DATABASE_ERROR: "ERR-003",
+  NETWORK_ERROR: "ERR-004",
+  UNKNOWN_ERROR: "ERR-005",
+
+});\n===== src/domain/constants/EventCodes.js =====\n
+// src/domain/constants/EventCodes.js
+
+export const EventCodes = Object.freeze({
+
+  NOTIFICATION_CREATED: "EVT-001",
+  NOTIFICATION_SENT: "EVT-002",
+  NOTIFICATION_FAILED: "EVT-003",
+  NOTIFICATION_RETRY: "EVT-004",
+
+});\n===== src/domain/constants/NotificationCodes.js =====\n
+// src/domain/constants/NotificationCodes.js
+
+export const NotificationCodes = Object.freeze({
+
+  PENDING: "NTF-001",
+  PROCESSING: "NTF-002",
+  SENT: "NTF-003",
+  FAILED: "NTF-004",
+  RETRYING: "NTF-005",
+  DEAD: "NTF-006",
+
+});\n===== src/domain/entities/Notification.js =====\n
 // src/domain/entities/Notification.js
 
 import NotificationStatus from "../value-objects/NotificationStatus.js";
@@ -526,44 +654,6 @@ export default class NotificationCreated {
       createdAt: this.#createdAt,
     };
   }
-}\n===== src/domain/events/NotificationSent.js =====\n
-// src/domain/events/NotificationSent.js
-
-import { EventCodes } from "../constants/EventCodes.js";
-
-export default class NotificationSent {
-
-  #notificationId;
-  #occurredAt;
-
-  constructor(notificationId) {
-    if (!notificationId) {
-      throw new Error("Notification id is required");
-    }
-
-    this.#notificationId = notificationId;
-    this.#occurredAt = new Date();
-
-    // Object.freeze(this);
-  }
-
-  get notificationId() {
-    return this.#notificationId;
-  }
-
-  get occurredAt() {
-    return this.#occurredAt;
-  }
-
-  toJSON() {
-    return {
-      eventName: "notification.sent",
-      eventCode: EventCodes.NOTIFICATION_SENT,
-
-      notificationId: this.#notificationId,
-      occurredAt: this.#occurredAt,
-    };
-  }
 }\n===== src/domain/events/NotificationFailed.js =====\n
 // src/domain/events/NotificationFailed.js
 
@@ -635,6 +725,44 @@ export default class NotificationRetryScheduled {
     return {
       eventName: "notification.retry",
       eventCode: EventCodes.NOTIFICATION_RETRY,
+
+      notificationId: this.#notificationId,
+      occurredAt: this.#occurredAt,
+    };
+  }
+}\n===== src/domain/events/NotificationSent.js =====\n
+// src/domain/events/NotificationSent.js
+
+import { EventCodes } from "../constants/EventCodes.js";
+
+export default class NotificationSent {
+
+  #notificationId;
+  #occurredAt;
+
+  constructor(notificationId) {
+    if (!notificationId) {
+      throw new Error("Notification id is required");
+    }
+
+    this.#notificationId = notificationId;
+    this.#occurredAt = new Date();
+
+    // Object.freeze(this);
+  }
+
+  get notificationId() {
+    return this.#notificationId;
+  }
+
+  get occurredAt() {
+    return this.#occurredAt;
+  }
+
+  toJSON() {
+    return {
+      eventName: "notification.sent",
+      eventCode: EventCodes.NOTIFICATION_SENT,
 
       notificationId: this.#notificationId,
       occurredAt: this.#occurredAt,
@@ -869,92 +997,91 @@ export default class Priority {
       other.value === this.#value
     );
   }
-}\n===== src/domain/constants/NotificationCodes.js =====\n
-// src/domain/constants/NotificationCodes.js
-
-export const NotificationCodes = Object.freeze({
-
-  PENDING: "NTF-001",
-  PROCESSING: "NTF-002",
-  SENT: "NTF-003",
-  FAILED: "NTF-004",
-  RETRYING: "NTF-005",
-  DEAD: "NTF-006",
-
-});\n===== src/domain/constants/ErrorCodes.js =====\n
-// src/domain/constants/ErrorCodes.js
-
-export const ErrorCodes = Object.freeze({
-
-  VALIDATION_ERROR: "ERR-001",
-  PROVIDER_ERROR: "ERR-002",
-  DATABASE_ERROR: "ERR-003",
-  NETWORK_ERROR: "ERR-004",
-  UNKNOWN_ERROR: "ERR-005",
-
-});\n===== src/domain/constants/EventCodes.js =====\n
-// src/domain/constants/EventCodes.js
-
-export const EventCodes = Object.freeze({
-
-  NOTIFICATION_CREATED: "EVT-001",
-  NOTIFICATION_SENT: "EVT-002",
-  NOTIFICATION_FAILED: "EVT-003",
-  NOTIFICATION_RETRY: "EVT-004",
-
-});\n===== src/interfaces/controllers/NotificationController.js =====\n
+}\n===== src/interfaces/controllers/NotificationController.js =====\n
 // src/interfaces/controllers/NotificationController.js
 
-export default class NotificationController {
+import SendNotificationDTO from "../../application/dto/SendNotificationDTO.js";
+import NotificationResponseDTO from "../../application/dto/NotificationResponseDTO.js";
 
-  constructor(createNotificationUseCase) {
-    this.createNotificationUseCase =
-      createNotificationUseCase;
+export default class NotificationController {
+  constructor(createNotificationUseCase, getNotificationByIdUseCase) {
+    this.createNotificationUseCase = createNotificationUseCase;
+    this.getNotificationByIdUseCase = getNotificationByIdUseCase;
   }
 
   async create(req, res, next) {
     try {
+      const dto = SendNotificationDTO.fromHttp(req.body);
 
-      const {
-        recipient,
-        message,
-        channel,
-        priority,
-      } = req.body;
+      const result = await this.createNotificationUseCase.execute(dto);
 
-      const result =
-        await this.createNotificationUseCase.execute({
-          recipient,
-          message,
-          channel,
-          priority,
-        });
+      const response = NotificationResponseDTO.fromDomain(result);
 
-      return res.status(201).json({
-        id: result.id,
-        status: result.status.value,
-      });
+      return res.status(201).json(response);
+    } catch (err) {
+      next(err);
+    }
+  }
 
+  async getById(req, res, next) {
+    try {
+      const { id } = req.params;
+
+      const result = await this.getNotificationByIdUseCase.execute(id);
+
+      const response = NotificationResponseDTO.fromDomain(result);
+
+      return res.status(200).json(response);
     } catch (err) {
       next(err);
     }
   }
 }\n===== src/interfaces/middlewares/errorHandler.js =====\n
-\n===== src/interfaces/middlewares/requestLogger.js =====\n
+// src/interfaces/middlewares/errorHandler.js
+
+export default function errorHandler(err, req, res, next) {
+  console.error(err);
+
+  if (err.message === "Notification not found") {
+    return res.status(404).json({
+      error: "NOT_FOUND",
+      message: err.message,
+    });
+  }
+
+  if (err.message === "id is required") {
+    return res.status(400).json({
+      error: "BAD_REQUEST",
+      message: err.message,
+    });
+  }
+
+  return res.status(500).json({
+    error: "INTERNAL_SERVER_ERROR",
+    message: "Unexpected error",
+  });
+}\n===== src/interfaces/middlewares/requestLogger.js =====\n
 \n===== src/interfaces/routes/notificationRoutes.js =====\n
 // src/interfaces/routes/notificationRoutes.js
 
 import express from "express";
 import NotificationController from "../controllers/NotificationController.js";
 import CreateNotificationUseCase from "../../application/use-cases/CreateNotificationUseCase.js";
+import GetNotificationByIdUseCase from "../../application/use-cases/GetNotificationByIdUseCase.js";
 
 export default function createNotificationRoutes(repo, publisher) {
   const router = express.Router();
 
-  const useCase = new CreateNotificationUseCase(repo, publisher);
-  const controller = new NotificationController(useCase);
+  const createUseCase = new CreateNotificationUseCase(repo, publisher);
+  const getByIdUseCase = new GetNotificationByIdUseCase(repo);
+
+  const controller = new NotificationController(
+    createUseCase,
+    getByIdUseCase
+  );
 
   router.post("/", controller.create.bind(controller));
+  router.get("/:id", controller.getById.bind(controller));
 
   return router;
 }\n===== src/server.js =====\n
@@ -964,6 +1091,7 @@ import express from "express";
 import NotificationRepositoryInMemory from "./infrastructure/repositories/NotificationRepositoryInMemory.js";
 import RedisPublisher from "./infrastructure/messaging/redis/RedisPublisher.js";
 import createRoutes from "./interfaces/routes/notificationRoutes.js";
+import errorHandler from "./interfaces/middlewares/errorHandler.js";
 
 export function createServer({ repo, publisher } = {}) {
   const app = express();
@@ -977,37 +1105,7 @@ export function createServer({ repo, publisher } = {}) {
 
   app.use("/notifications", createRoutes(repository, eventPublisher));
 
+  app.use(errorHandler);
+
   return { app };
-}\n===== src/bootstrap/container.js =====\n
-// src/bootstrap/container.js
-
-import { prisma }
-from "../infrastructure/database/prismaClient.js";
-
-import NotificationRepositoryMySQL
-from "../infrastructure/repositories/NotificationRepositoryMySQL.js";
-
-import NotificationRepositoryInMemory
-from "../infrastructure/repositories/NotificationRepositoryInMemory.js";
-
-import RedisPublisher
-from "../infrastructure/messaging/redis/RedisPublisher.js";
-
-export function createContainer() {
-
-  const isTest =
-    process.env.NODE_ENV === "test";
-
-  const notificationRepository =
-    isTest
-      ? new NotificationRepositoryInMemory()
-      : new NotificationRepositoryMySQL(prisma);
-
-  const eventPublisher =
-    new RedisPublisher();
-
-  return {
-    notificationRepository,
-    eventPublisher
-  };
 }
