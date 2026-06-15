@@ -6,10 +6,6 @@ import Channel from "../../domain/value-objects/Channel.js";
 import Priority from "../../domain/value-objects/Priority.js";
 
 export default class NotificationMapper {
-
-  // =========================
-  // DOMAIN → PERSISTENCE
-  // =========================
   static toPersistence(notification) {
     return {
       id: notification.id,
@@ -24,9 +20,6 @@ export default class NotificationMapper {
     };
   }
 
-  // =========================
-  // PERSISTENCE → DOMAIN
-  // =========================
   static toDomain(record) {
     if (!record) return null;
 
@@ -43,10 +36,8 @@ export default class NotificationMapper {
     });
   }
 
-  // =========================
-  // LIST MAPPING
-  // =========================
-  static toDomainList(records = []) {
-    return records.map(r => this.toDomain(r));
+  static toDomainList(records) {
+    if (!Array.isArray(records)) return [];
+    return records.map(r => this.toDomain(r)).filter(Boolean);
   }
 }

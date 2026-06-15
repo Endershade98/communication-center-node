@@ -1,27 +1,21 @@
 // src/server.js
 
 import express from "express";
-import { createContainer } from "./bootstrap/container.js";
-import createNotificationRoutes from "./interfaces/routes/notificationRoutes.js";
+import NotificationRepositoryInMemory from "./infrastructure/repositories/NotificationRepositoryInMemory.js";
+import RedisPublisher from "./infrastructure/messaging/redis/RedisPublisher.js";
+import createRoutes from "./interfaces/routes/notificationRoutes.js";
 
-const app = express();
-app.use(express.json());
+export function createServer({ repo, publisher } = {}) {
+  const app = express();
+  app.use(express.json());
 
-// =========================
-// COMPOSITION ROOT
-// =========================
-const container = createContainer();
+  const repository =
+    repo ?? new NotificationRepositoryInMemory();
 
-// =========================
-// ROUTES
-// =========================
-app.use("/notifications", createNotificationRoutes(container));
+  const eventPublisher =
+    publisher ?? new RedisPublisher();
 
-// =========================
-// START
-// =========================
-const PORT = process.env.PORT || 3000;
+  app.use("/notifications", createRoutes(repository, eventPublisher));
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+  return { app };
+}

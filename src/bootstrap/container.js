@@ -1,44 +1,32 @@
 // src/bootstrap/container.js
 
-import { prisma } from "../infrastructure/database/prismaClient.js";
+import { prisma }
+from "../infrastructure/database/prismaClient.js";
 
-// Repositories
-import NotificationRepositoryMySQL from "../infrastructure/repositories/NotificationRepositoryMySQL.js";
+import NotificationRepositoryMySQL
+from "../infrastructure/repositories/NotificationRepositoryMySQL.js";
 
-// Messaging
-import RedisPublisher from "../infrastructure/messaging/redis/RedisPublisher.js";
+import NotificationRepositoryInMemory
+from "../infrastructure/repositories/NotificationRepositoryInMemory.js";
 
-// Use Cases
-import CreateNotificationUseCase from "../application/use-cases/CreateNotificationUseCase.js";
+import RedisPublisher
+from "../infrastructure/messaging/redis/RedisPublisher.js";
 
-/**
- * Composition Root
- * Qui costruiamo TUTTE le dipendenze
- */
 export function createContainer() {
 
-  // =========================
-  // INFRASTRUCTURE
-  // =========================
+  const isTest =
+    process.env.NODE_ENV === "test";
 
-  const notificationRepository = new NotificationRepositoryMySQL(prisma);
+  const notificationRepository =
+    isTest
+      ? new NotificationRepositoryInMemory()
+      : new NotificationRepositoryMySQL(prisma);
 
-  const eventPublisher = new RedisPublisher();
-
-  // =========================
-  // USE CASES
-  // =========================
-
-  const createNotificationUseCase =
-    new CreateNotificationUseCase(notificationRepository, eventPublisher);
-
-  // =========================
-  // EXPORT SERVICES
-  // =========================
+  const eventPublisher =
+    new RedisPublisher();
 
   return {
     notificationRepository,
-    eventPublisher,
-    createNotificationUseCase,
+    eventPublisher
   };
 }

@@ -14,7 +14,7 @@ export default class Channel {
       throw new Error(`Invalid Channel: ${value}`);
     }
     this.#value = value;
-    Object.freeze(this);
+    // Object.freeze(this);
   }
 
   get value() {

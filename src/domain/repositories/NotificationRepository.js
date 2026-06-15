@@ -1,39 +1,25 @@
 // src/domain/repositories/NotificationRepository.js
 
 export default class NotificationRepository {
+  constructor() {
+    if (new.target === NotificationRepository) {
+      throw new Error("Cannot instantiate abstract class");
+    }
+  }
 
-  /**
-   * Salva una nuova notifica
-   * @param {Notification} notification
-   */
-  async save(notification) {
+  async save() {
     throw new Error("save() not implemented");
   }
 
-  /**
-   * Aggiorna una notifica esistente
-   * @param {Notification} notification
-   */
-  async update(notification) {
+  async update() {
     throw new Error("update() not implemented");
   }
 
-  /**
-   * Trova una notifica per ID
-   * @param {string} id
-   * @returns {Notification|null}
-   */
-  async findById(id) {
+  async findById() {
     throw new Error("findById() not implemented");
   }
 
-  /**
-   * Lista notifiche per destinatario
-   * @param {string} recipient
-   * @returns {Notification[]}
-   */
-  async findByRecipient(recipient) {
+  async findByRecipient() {
     throw new Error("findByRecipient() not implemented");
   }
-
 }

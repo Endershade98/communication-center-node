@@ -15,7 +15,7 @@ export default class NotificationRetryScheduled {
     this.#notificationId = notificationId;
     this.#occurredAt = new Date();
 
-    Object.freeze(this);
+    // Object.freeze(this);
   }
 
   get notificationId() {

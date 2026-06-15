@@ -34,7 +34,7 @@ export default class NotificationCreated {
     this.#priority = priority;
     this.#createdAt = createdAt || new Date();
 
-    Object.freeze(this);
+    // Object.freeze(this);
   }
 
   get id() {

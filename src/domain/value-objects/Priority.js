@@ -18,7 +18,7 @@ export default class Priority {
 
     this.#value = value;
 
-    Object.freeze(this);
+    // Object.freeze(this);
   }
 
   get value() {

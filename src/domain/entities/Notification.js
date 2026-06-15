@@ -3,7 +3,11 @@
 import NotificationStatus from "../value-objects/NotificationStatus.js";
 import Channel from "../value-objects/Channel.js";
 import Priority from "../value-objects/Priority.js";
+
 import NotificationCreated from "../events/NotificationCreated.js";
+import NotificationSent from "../events/NotificationSent.js";
+import NotificationFailed from "../events/NotificationFailed.js";
+
 
 export default class Notification {
 
@@ -49,7 +53,7 @@ export default class Notification {
     this.#sentAt = sentAt || null;
     this.#failedAt = failedAt || null;
 
-    Object.freeze(this);
+    // Object.freeze(this);
   }
 
   // =========================
@@ -75,7 +79,7 @@ export default class Notification {
   }
 
   clearEvents() {
-    this.#domainEvents = [];
+    this.#domainEvents.length = 0;
   }
 
   // =========================
@@ -141,20 +145,32 @@ export default class Notification {
     const target = NotificationStatus.sent();
     this.#assertTransition(target);
 
-    return this.#clone({
+    const updated = this.#clone({
       status: target,
       sentAt: new Date(),
     });
+
+    updated.#addDomainEvent(
+      new NotificationSent(this.#id)
+    );
+
+    return updated;
   }
 
   markAsFailed() {
     const target = NotificationStatus.failed();
     this.#assertTransition(target);
 
-    return this.#clone({
+    const updated = this.#clone({
       status: target,
       failedAt: new Date(),
     });
+
+    updated.#addDomainEvent(
+      new NotificationFailed(this.#id)
+    );
+
+    return updated;
   }
 
   markAsDead() {
