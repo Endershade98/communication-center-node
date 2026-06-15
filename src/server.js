@@ -1,7 +1,21 @@
-import app from "./app.js";
+// src/server.js
 
-const PORT = process.env.PORT || 3000;
+import express from "express";
+import NotificationRepositoryInMemory from "./infrastructure/repositories/NotificationRepositoryInMemory.js";
+import RedisPublisher from "./infrastructure/messaging/redis/RedisPublisher.js";
+import createRoutes from "./interfaces/routes/notificationRoutes.js";
 
-app.listen(PORT, () => {
-  console.log(`Notification Service running on port ${PORT}`);
-});
+export function createServer({ repo, publisher } = {}) {
+  const app = express();
+  app.use(express.json());
+
+  const repository =
+    repo ?? new NotificationRepositoryInMemory();
+
+  const eventPublisher =
+    publisher ?? new RedisPublisher();
+
+  app.use("/notifications", createRoutes(repository, eventPublisher));
+
+  return { app };
+}

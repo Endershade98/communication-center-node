@@ -1,0 +1,323 @@
+\n===== tests/setup/testContainer.js =====\n
+// tests/setup/testContainer.js
+
+import { GenericContainer } from "testcontainers";
+
+let mysqlContainer;
+let redisContainer;
+
+export async function startTestContainers() {
+  mysqlContainer = await new GenericContainer("mysql:8.0")
+    .withEnvironment({
+      MYSQL_ROOT_PASSWORD: "root",
+      MYSQL_DATABASE: "test_db",
+    })
+    .withExposedPorts(3306)
+    .start();
+
+  redisContainer = await new GenericContainer("redis:7")
+    .withExposedPorts(6379)
+    .start();
+
+  return {
+    mysql: {
+      host: mysqlContainer.getHost(),
+      port: mysqlContainer.getMappedPort(3306),
+    },
+    redis: {
+      host: redisContainer.getHost(),
+      port: redisContainer.getMappedPort(6379),
+    },
+  };
+}
+
+export async function stopTestContainers() {
+  await mysqlContainer?.stop();
+  await redisContainer?.stop();
+}\n===== tests/setup/globalSetup.js =====\n
+// tests/setup/globalSetup.js
+
+import { execSync } from "child_process";
+import setupTestEnv from "./testEnv.js";
+
+export default async function globalSetup() {
+  console.log("🧪 Starting test containers...");
+
+  const env = await setupTestEnv();
+
+  process.env.DATABASE_URL = env.DATABASE_URL;
+  process.env.REDIS_URL = env.REDIS_URL;
+  process.env.NODE_ENV = "test";
+
+  console.log("🧪 Running Prisma migrations on test DB...");
+
+  execSync("npx prisma db push --accept-data-loss", {
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      DATABASE_URL: env.DATABASE_URL,
+    },
+  });
+}\n===== tests/setup/globalTeardown.js =====\n
+// tests/setup/globalTeardown.js
+
+import { stopTestContainers } from "./testContainer.js";
+
+export default async function globalTeardown() {
+  await stopTestContainers();
+  console.log("🧹 Test teardown completed");
+}\n===== tests/setup/prismaTestClient.js =====\n
+// tests/setup/prismaTestClient.js
+
+import { PrismaClient } from "@prisma/client";
+
+export const prismaTest = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL,
+    },
+  },
+});\n===== tests/setup/testEnv.js =====\n
+// tests/setup/testEnv.js
+
+import { startTestContainers } from "./testContainer.js";
+
+export default async function setupTestEnv() {
+  const { mysql, redis } = await startTestContainers();
+
+  const DATABASE_URL =
+    `mysql://root:root@${mysql.host}:${mysql.port}/test_db`;
+
+  const REDIS_URL =
+    `redis://${redis.host}:${redis.port}`;
+
+  return {
+    DATABASE_URL,
+    REDIS_URL,
+  };
+}\n===== tests/setup/transaction.js =====\n
+// tests/setup/transaction.js
+
+import { prismaTest } from "./prismaTestClient.js";
+
+export async function runInTransaction(fn) {
+  return prismaTest.$transaction(async (tx) => {
+    const result = await fn(tx);
+    throw new Error("__ROLLBACK__"); // forza rollback
+    return result;
+  }).catch((e) => {
+    if (e.message !== "__ROLLBACK__") throw e;
+  });
+}\n===== tests/setup/dbCleanup.js =====\n
+// tests/setup/dbCleanup.js
+
+export async function truncateAll(prisma) {
+  const tablenames = await prisma.$queryRaw`
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = DATABASE()
+  `;
+
+  await prisma.$executeRawUnsafe(
+    "SET FOREIGN_KEY_CHECKS = 0"
+  );
+
+  for (const { table_name } of tablenames) {
+    await prisma.$executeRawUnsafe(
+      `TRUNCATE TABLE \`${table_name}\``
+    );
+  }
+
+  await prisma.$executeRawUnsafe(
+    "SET FOREIGN_KEY_CHECKS = 1"
+  );
+}\n===== tests/unit/domain/NotificationStatus.test.js =====\n
+// tests/unit/domain/NotificationStatus.test.js
+
+import NotificationStatus from "../../../src/domain/value-objects/NotificationStatus.js";
+
+describe("NotificationStatus", () => {
+  test("valid transition PENDING → PROCESSING", () => {
+    const status = NotificationStatus.pending();
+    expect(status.canTransitionTo(NotificationStatus.processing())).toBe(true);
+  });
+
+  test("invalid transition SENT → PROCESSING", () => {
+    const status = NotificationStatus.sent();
+    expect(status.canTransitionTo(NotificationStatus.processing())).toBe(false);
+  });
+});\n===== tests/unit/domain/Notification.test.js =====\n
+// tests/unit/domain/Notification.test.js
+
+import Notification from "../../../src/domain/entities/Notification.js";
+
+test("domain event created", () => {
+  const n = Notification.create({
+    id: "1",
+    recipient: "test@test.com",
+    message: "hello",
+    channel: "EMAIL",
+    priority: "HIGH",
+  });
+
+  expect(n.domainEvents.length).toBe(1);
+});\n===== tests/integration/repositories/NotificationRepositoryMySQL.test.js =====\n
+// tests/integration/repositories/NotificationRepositoryMySQL.test.js
+
+import NotificationRepositoryMySQL
+  from "../../../src/infrastructure/repositories/NotificationRepositoryMySQL.js";
+
+import Notification
+  from "../../../src/domain/entities/Notification.js";
+
+import { prismaTest }
+  from "../../setup/prismaTestClient.js";
+
+import { truncateAll }
+  from "../../setup/dbCleanup.js";
+
+describe("MySQL Repository", () => {
+
+  afterEach(async () => {
+    await truncateAll(prismaTest);
+  });
+
+  test("save + findById", async () => {
+
+    const repo =
+      new NotificationRepositoryMySQL(prismaTest);
+
+    const notification =
+      Notification.create({
+        id: "1",
+        recipient: "a@a.com",
+        message: "hello",
+        channel: "EMAIL",
+        priority: "LOW",
+      });
+
+    await repo.save(notification);
+
+    const found =
+      await repo.findById("1");
+
+    expect(found).not.toBeNull();
+
+    expect(found.id)
+      .toBe("1");
+
+    expect(found.recipient)
+      .toBe("a@a.com");
+
+    expect(found.message)
+      .toBe("hello");
+
+    expect(found.channel.value)
+      .toBe("EMAIL");
+
+    expect(found.priority.value)
+      .toBe("LOW");
+
+    expect(found.status.value)
+      .toBe("PENDING");
+  });
+
+});\n===== tests/integration/usecases/CreateNotificationUseCase.integration.test.js =====\n
+// tests/integration/usecases/CreateNotificationUseCase.integration.test.js
+
+import CreateNotificationUseCase from "../../../src/application/use-cases/CreateNotificationUseCase.js";
+import NotificationRepositoryMySQL from "../../../src/infrastructure/repositories/NotificationRepositoryMySQL.js";
+import { prismaTest } from "../../setup/prismaTestClient.js";
+
+class FakePublisher {
+  constructor() {
+    this.events = [];
+  }
+
+  async publish(event, payload) {
+    this.events.push({ event, payload });
+  }
+}
+
+afterEach(async () => {
+  await prismaTest.notification.deleteMany();
+});
+
+describe("CreateNotificationUseCase (integration)", () => {
+  test("should persist and emit domain events", async () => {
+    const repo = new NotificationRepositoryMySQL(prismaTest);
+    const publisher = new FakePublisher();
+
+    const useCase = new CreateNotificationUseCase(repo, publisher);
+
+    const result = await useCase.execute({
+      recipient: "test@test.com",
+      message: "hello",
+      channel: "EMAIL",
+      priority: "HIGH",
+    });
+
+    expect(result.id).toBeDefined();
+    expect(publisher.events.length).toBeGreaterThan(0);
+  });
+});\n===== tests/integration/pipeline/NotificationEventPipeline.integration.test.js =====\n
+// tests/integration/pipeline/NotificationEventPipeline.integration.test.js
+
+import Redis from "ioredis";
+
+describe("Event Pipeline (Redis)", () => {
+  test("publish + consume event", async () => {
+    const subscriber = new Redis(process.env.REDIS_URL);
+    const publisher = new Redis(process.env.REDIS_URL);
+
+    const received = [];
+
+    await subscriber.subscribe("notification.created");
+
+    subscriber.on("message", (channel, message) => {
+      received.push({
+        channel,
+        payload: JSON.parse(message),
+      });
+    });
+
+    await publisher.publish(
+      "notification.created",
+      JSON.stringify({
+        id: "1",
+      }),
+    );
+
+    await new Promise((resolve) =>
+      setTimeout(resolve, 300),
+    );
+
+    expect(received.length).toBe(1);
+    expect(received[0].payload.id).toBe("1");
+
+    await subscriber.quit();
+    await publisher.quit();
+  });
+});\n===== tests/e2e/notification.e2e.test.js =====\n
+// tests/e2e/notification.e2e.test.js
+
+import request from "supertest";
+import { createServer } from "../../src/server.js";
+
+describe("E2E Notification", () => {
+  test("POST /notifications", async () => {
+    const { app } = createServer();
+
+    const res = await request(app)
+      .post("/notifications")
+      .send({
+        recipient: "e2e@test.com",
+        message: "hello",
+        channel: "EMAIL",
+        priority: "HIGH",
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBeDefined();
+  });
+});
