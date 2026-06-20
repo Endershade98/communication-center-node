@@ -13,6 +13,19 @@ export const prisma =
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
+}\n===== src/infrastructure/providers/email/FakeEmailProvider.js =====\n
+// src/infrastructure/providers/email/FakeEmailProvider.js
+
+export default class FakeEmailProvider {
+
+  async send(notification) {
+
+    return {
+      success: true
+    };
+
+  }
+
 }\n===== src/infrastructure/mappers/NotificationMapper.js =====\n
 // src/infrastructure/mappers/NotificationMapper.js
 
@@ -56,41 +69,60 @@ export default class NotificationMapper {
     if (!Array.isArray(records)) return [];
     return records.map(r => this.toDomain(r)).filter(Boolean);
   }
-}\n===== src/infrastructure/messaging/redis/RedisPublisher.js =====\n
-// src/infrastructure/messaging/redis/RedisPublisher.js
+}\n===== src/infrastructure/messaging/redis/RedisStreamPublisher.js =====\n
+// src/infrastructure/messaging/redis/RedisStreamPublisher.js
 
 import Redis from "ioredis";
 
-export default class RedisPublisher {
+export default class RedisStreamPublisher {
+
   constructor({
     host = "127.0.0.1",
     port = 6379,
     redisClient,
     disabled = process.env.NODE_ENV === "test",
   } = {}) {
+
     this.disabled = disabled;
 
     if (this.disabled) return;
 
-    this.redis = redisClient ?? new Redis({ host, port });
+    this.redis =
+      redisClient ??
+      new Redis({
+        host,
+        port,
+      });
   }
 
-  async publish(channel, message) {
+  async publish(stream, payload) {
+
     if (this.disabled) return;
 
-    const payload =
-      typeof message === "string"
-        ? message
-        : JSON.stringify(message);
-
-    await this.redis.publish(channel, payload);
+    await this.redis.xadd(
+      stream,
+      "*",
+      "data",
+      JSON.stringify(payload)
+    );
   }
 
   async disconnect() {
+
     if (this.disabled) return;
+
     await this.redis.quit();
   }
-}\n===== src/infrastructure/repositories/NotificationRepositoryInMemory.js =====\n
+
+}\n===== src/infrastructure/messaging/redis/RedisStreams.js =====\n
+// src/infrastructure/messaging/redis/RedisStreams.js
+
+export const RedisStreams = Object.freeze({
+
+  NOTIFICATION_CREATED:
+    "notifications:created",
+
+});\n===== src/infrastructure/repositories/NotificationRepositoryInMemory.js =====\n
 // src/infrastructure/repositories/NotificationRepositoryInMemory.js
 
 import NotificationRepository from "../../domain/repositories/NotificationRepository.js";
@@ -223,21 +255,28 @@ export default class SendNotificationDTO {
 // src/application/services/DomainEventDispatcher.js
 
 export default class DomainEventDispatcher {
+
   constructor(eventPublisher) {
-    this.eventPublisher = eventPublisher;
+    this.eventPublisher =
+      eventPublisher;
   }
 
   async dispatch(events = []) {
+
     for (const event of events) {
-      const payload = event.toJSON();
 
       await this.eventPublisher.publish(
-        payload.eventName,
-        payload
+        event.stream,
+        event.toJSON()
       );
+
     }
+
   }
-}\n===== src/application/use-cases/CreateNotificationUseCase.js =====\n
+
+}\n===== src/application/use-cases/GetNotificationStatus.js =====\n
+\n===== src/application/use-cases/RetryNotification.js =====\n
+\n===== src/application/use-cases/CreateNotificationUseCase.js =====\n
 // src/application/use-cases/CreateNotificationUseCase.js
 
 import { randomUUID } from "crypto";
@@ -267,9 +306,7 @@ export default class CreateNotificationUseCase {
 
     return notification;
   }
-}\n===== src/application/use-cases/GetNotificationStatus.js =====\n
-\n===== src/application/use-cases/RetryNotification.js =====\n
-\n===== src/application/use-cases/GetNotificationByIdUseCase.js =====\n
+}\n===== src/application/use-cases/GetNotificationByIdUseCase.js =====\n
 // src/application/use-cases/GetNotificationByIdUseCase.js
 
 export default class GetNotificationByIdUseCase {
@@ -302,8 +339,8 @@ from "../infrastructure/repositories/NotificationRepositoryMySQL.js";
 import NotificationRepositoryInMemory
 from "../infrastructure/repositories/NotificationRepositoryInMemory.js";
 
-import RedisPublisher
-from "../infrastructure/messaging/redis/RedisPublisher.js";
+import RedisStreamPublisher
+from "../infrastructure/messaging/redis/RedisStreamPublisher.js";
 
 export function createContainer() {
 
@@ -316,12 +353,13 @@ export function createContainer() {
       : new NotificationRepositoryMySQL(prisma);
 
   const eventPublisher =
-    new RedisPublisher();
+    new RedisStreamPublisher();
 
   return {
     notificationRepository,
-    eventPublisher
+    eventPublisher,
   };
+
 }\n===== src/domain/constants/ErrorCodes.js =====\n
 // src/domain/constants/ErrorCodes.js
 
@@ -574,6 +612,8 @@ export default class Notification {
 // src/domain/events/NotificationCreated.js
 
 import { EventCodes } from "../constants/EventCodes.js";
+import { RedisStreams }
+from "../../infrastructure/messaging/redis/RedisStreams.js";
 
 export default class NotificationCreated {
 
@@ -592,6 +632,7 @@ export default class NotificationCreated {
     priority,
     createdAt,
   }) {
+
     if (!id) {
       throw new Error("Event must have id");
     }
@@ -606,54 +647,40 @@ export default class NotificationCreated {
     this.#channel = channel;
     this.#priority = priority;
     this.#createdAt = createdAt || new Date();
-
-    // Object.freeze(this);
   }
 
-  get id() {
-    return this.#id;
-  }
-
-  get recipient() {
-    return this.#recipient;
-  }
-
-  get message() {
-    return this.#message;
-  }
-
-  get channel() {
-    return this.#channel;
-  }
-
-  get priority() {
-    return this.#priority;
-  }
-
-  get createdAt() {
-    return this.#createdAt;
+  get stream() {
+    return RedisStreams.NOTIFICATION_CREATED;
   }
 
   toJSON() {
     return {
-      eventName: "notification.created",
-      eventCode: EventCodes.NOTIFICATION_CREATED,
+
+      eventCode:
+        EventCodes.NOTIFICATION_CREATED,
 
       id: this.#id,
-      recipient: this.#recipient,
-      message: this.#message,
+
+      recipient:
+        this.#recipient,
+
+      message:
+        this.#message,
 
       channel:
-        this.#channel?.value ||
+        this.#channel?.value ??
         this.#channel,
 
       priority:
-        this.#priority?.value ||
+        this.#priority?.value ??
         this.#priority,
 
-      createdAt: this.#createdAt,
+      createdAt:
+        this.#createdAt,
+
     };
   }
+
 }\n===== src/domain/events/NotificationFailed.js =====\n
 // src/domain/events/NotificationFailed.js
 
@@ -1036,7 +1063,8 @@ export default class NotificationController {
       next(err);
     }
   }
-}\n===== src/interfaces/middlewares/errorHandler.js =====\n
+}\n===== src/interfaces/middlewares/requestLogger.js =====\n
+\n===== src/interfaces/middlewares/errorHandler.js =====\n
 // src/interfaces/middlewares/errorHandler.js
 
 export default function errorHandler(err, req, res, next) {
@@ -1060,8 +1088,7 @@ export default function errorHandler(err, req, res, next) {
     error: "INTERNAL_SERVER_ERROR",
     message: "Unexpected error",
   });
-}\n===== src/interfaces/middlewares/requestLogger.js =====\n
-\n===== src/interfaces/routes/notificationRoutes.js =====\n
+}\n===== src/interfaces/routes/notificationRoutes.js =====\n
 // src/interfaces/routes/notificationRoutes.js
 
 import express from "express";
@@ -1089,7 +1116,7 @@ export default function createNotificationRoutes(repo, publisher) {
 
 import express from "express";
 import NotificationRepositoryInMemory from "./infrastructure/repositories/NotificationRepositoryInMemory.js";
-import RedisPublisher from "./infrastructure/messaging/redis/RedisPublisher.js";
+import RedisStreamPublisher from "./infrastructure/messaging/redis/RedisStreamPublisher.js";
 import createRoutes from "./interfaces/routes/notificationRoutes.js";
 import errorHandler from "./interfaces/middlewares/errorHandler.js";
 
@@ -1101,11 +1128,48 @@ export function createServer({ repo, publisher } = {}) {
     repo ?? new NotificationRepositoryInMemory();
 
   const eventPublisher =
-    publisher ?? new RedisPublisher();
+    publisher ??
+    new RedisStreamPublisher();
 
   app.use("/notifications", createRoutes(repository, eventPublisher));
 
   app.use(errorHandler);
 
   return { app };
-}
+}\n===== src/workers/bootstrap/createConsumerGroup.js =====\n
+// src/workers/bootstrap/createConsumerGroup.js
+
+import Redis from "ioredis";
+import { RedisStreams }
+from "../../infrastructure/messaging/redis/RedisStreams.js";
+
+const GROUP_NAME =
+  "notification-workers";
+
+export async function createConsumerGroup() {
+
+  const redis = new Redis();
+
+  try {
+
+    await redis.xgroup(
+      "CREATE",
+      RedisStreams.NOTIFICATION_CREATED,
+      GROUP_NAME,
+      "0",
+      "MKSTREAM"
+    );
+
+  } catch (err) {
+
+    if (!err.message.includes("BUSYGROUP")) {
+      throw err;
+    }
+
+  }
+
+  await redis.quit();
+
+}\n===== src/workers/notificationWorker.js =====\n
+// src/workers/notificationWorker.js
+
