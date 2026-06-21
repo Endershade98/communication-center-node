@@ -1,30 +1,78 @@
 // tests/unit/application/DomainEventDispatcher.test.js
 
-import DomainEventDispatcher from "../../../src/application/services/DomainEventDispatcher.js";
+import DomainEventDispatcher
+  from "../../../src/application/services/DomainEventDispatcher.js";
 
 class FakePublisher {
+
   constructor() {
     this.calls = [];
   }
 
-  async publish(event, payload) {
-    this.calls.push({ event, payload });
+  async publish(stream, payload) {
+
+    this.calls.push({
+      stream,
+      payload,
+    });
+
   }
+
 }
 
-test("dispatch sends events", async () => {
-  const publisher = new FakePublisher();
-  const dispatcher = new DomainEventDispatcher(publisher);
+describe(
+  "DomainEventDispatcher",
+  () => {
 
-  const fakeEvent = {
-    toJSON: () => ({
-      eventName: "test.event",
-      value: 123
-    })
-  };
+    test(
+      "dispatch publishes to stream",
+      async () => {
 
-  await dispatcher.dispatch([fakeEvent]);
+        const publisher =
+          new FakePublisher();
 
-  expect(publisher.calls.length).toBe(1);
-  expect(publisher.calls[0].event).toBe("test.event");
-});
+        const dispatcher =
+          new DomainEventDispatcher(
+            publisher,
+          );
+
+        const fakeEvent = {
+
+          stream:
+            "notifications:created",
+
+          toJSON() {
+
+            return {
+              id: "123",
+            };
+
+          },
+
+        };
+
+        await dispatcher.dispatch([
+          fakeEvent,
+        ]);
+
+        expect(
+          publisher.calls,
+        ).toHaveLength(1);
+
+        expect(
+          publisher.calls[0].stream,
+        ).toBe(
+          "notifications:created",
+        );
+
+        expect(
+          publisher.calls[0].payload,
+        ).toEqual({
+          id: "123",
+        });
+
+      },
+    );
+
+  },
+);

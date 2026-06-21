@@ -57,45 +57,95 @@ describe("GET /notifications/:id", () => {
 
     expect(res.status).toBe(404);
   });
-});\n===== tests/integration/pipeline/NotificationEventPipeline.integration.test.js =====\n
-// tests/integration/pipeline/NotificationEventPipeline.integration.test.js
+});\n===== tests/integration/pipeline/ConsumerGroupBootstrap.test.js =====\n
+// tests/integration/pipeline/ConsumerGroupBootstrap.test.js
 
 import Redis from "ioredis";
 
-describe("Event Pipeline (Redis)", () => {
-  test("publish + consume event", async () => {
-    const subscriber = new Redis(process.env.REDIS_URL);
-    const publisher = new Redis(process.env.REDIS_URL);
+describe(
+  "Consumer Group Bootstrap",
+  () => {
 
-    const received = [];
+    test(
+      "creates consumer group",
+      async () => {
 
-    await subscriber.subscribe("notification.created");
+        const redis =
+          new Redis(
+            process.env.REDIS_URL,
+          );
 
-    subscriber.on("message", (channel, message) => {
-      received.push({
-        channel,
-        payload: JSON.parse(message),
-      });
-    });
+        try {
 
-    await publisher.publish(
-      "notification.created",
-      JSON.stringify({
-        id: "1",
-      }),
+          await redis.xgroup(
+            "CREATE",
+            "notifications:created",
+            "notification-workers",
+            "0",
+            "MKSTREAM",
+          );
+
+        } catch {}
+
+        const groups =
+          await redis.xinfo(
+            "GROUPS",
+            "notifications:created",
+          );
+
+        expect(
+          groups.length,
+        ).toBeGreaterThan(0);
+
+        await redis.quit();
+
+      },
     );
 
-    await new Promise((resolve) =>
-      setTimeout(resolve, 300),
+  },
+);\n===== tests/integration/pipeline/NotificationStream.integration.test.js =====\n
+// tests/integration/pipeline/NotificationStream.integration.test.js
+
+import Redis from "ioredis";
+
+describe(
+  "Redis Stream",
+  () => {
+
+    test(
+      "writes event into stream",
+      async () => {
+
+        const redis =
+          new Redis(
+            process.env.REDIS_URL,
+          );
+
+        await redis.xadd(
+          "notifications:created",
+          "*",
+          "id",
+          "1",
+        );
+
+        const result =
+          await redis.xrange(
+            "notifications:created",
+            "-",
+            "+",
+          );
+
+        expect(
+          result.length,
+        ).toBeGreaterThan(0);
+
+        await redis.quit();
+
+      },
     );
 
-    expect(received.length).toBe(1);
-    expect(received[0].payload.id).toBe("1");
-
-    await subscriber.quit();
-    await publisher.quit();
-  });
-});\n===== tests/integration/repositories/NotificationRepositoryInMemory.test.js =====\n
+  },
+);\n===== tests/integration/repositories/NotificationRepositoryInMemory.test.js =====\n
 // tests/integration/repositories/NotificationRepositoryInMemory.test.js
 
 import NotificationRepositoryInMemory
@@ -241,13 +291,20 @@ import NotificationRepositoryMySQL from "../../../src/infrastructure/repositorie
 import { prismaTest } from "../../setup/prismaTestClient.js";
 
 class FakePublisher {
+
   constructor() {
     this.events = [];
   }
 
-  async publish(event, payload) {
-    this.events.push({ event, payload });
+  async publish(stream, payload) {
+
+    this.events.push({
+      stream,
+      payload,
+    });
+
   }
+
 }
 
 afterEach(async () => {
@@ -268,8 +325,15 @@ describe("CreateNotificationUseCase (integration)", () => {
       priority: "HIGH",
     });
 
-    expect(result.id).toBeDefined();
-    expect(publisher.events.length).toBeGreaterThan(0);
+    expect(
+      publisher.events[0].stream,
+    ).toBe(
+      "notifications:created",
+    );
+    
+    expect(
+      publisher.events[0].payload.id,
+    ).toBeDefined();
   });
 });\n===== tests/setup/dbCleanup.js =====\n
 // tests/setup/dbCleanup.js
@@ -395,34 +459,82 @@ export async function runInTransaction(fn) {
 }\n===== tests/unit/application/DomainEventDispatcher.test.js =====\n
 // tests/unit/application/DomainEventDispatcher.test.js
 
-import DomainEventDispatcher from "../../../src/application/services/DomainEventDispatcher.js";
+import DomainEventDispatcher
+  from "../../../src/application/services/DomainEventDispatcher.js";
 
 class FakePublisher {
+
   constructor() {
     this.calls = [];
   }
 
-  async publish(event, payload) {
-    this.calls.push({ event, payload });
+  async publish(stream, payload) {
+
+    this.calls.push({
+      stream,
+      payload,
+    });
+
   }
+
 }
 
-test("dispatch sends events", async () => {
-  const publisher = new FakePublisher();
-  const dispatcher = new DomainEventDispatcher(publisher);
+describe(
+  "DomainEventDispatcher",
+  () => {
 
-  const fakeEvent = {
-    toJSON: () => ({
-      eventName: "test.event",
-      value: 123
-    })
-  };
+    test(
+      "dispatch publishes to stream",
+      async () => {
 
-  await dispatcher.dispatch([fakeEvent]);
+        const publisher =
+          new FakePublisher();
 
-  expect(publisher.calls.length).toBe(1);
-  expect(publisher.calls[0].event).toBe("test.event");
-});\n===== tests/unit/domain/Notification.branches.test.js =====\n
+        const dispatcher =
+          new DomainEventDispatcher(
+            publisher,
+          );
+
+        const fakeEvent = {
+
+          stream:
+            "notifications:created",
+
+          toJSON() {
+
+            return {
+              id: "123",
+            };
+
+          },
+
+        };
+
+        await dispatcher.dispatch([
+          fakeEvent,
+        ]);
+
+        expect(
+          publisher.calls,
+        ).toHaveLength(1);
+
+        expect(
+          publisher.calls[0].stream,
+        ).toBe(
+          "notifications:created",
+        );
+
+        expect(
+          publisher.calls[0].payload,
+        ).toEqual({
+          id: "123",
+        });
+
+      },
+    );
+
+  },
+);\n===== tests/unit/domain/Notification.branches.test.js =====\n
 // tests/unit/domain/Notification.branches.test.js
 
 import Notification from "../../../src/domain/entities/Notification.js";
@@ -553,19 +665,45 @@ describe("Notification extra", () => {
 });\n===== tests/unit/domain/Notification.test.js =====\n
 // tests/unit/domain/Notification.test.js
 
-import Notification from "../../../src/domain/entities/Notification.js";
+import Notification
+  from "../../../src/domain/entities/Notification.js";
 
-test("domain event created", () => {
-  const n = Notification.create({
-    id: "1",
-    recipient: "test@test.com",
-    message: "hello",
-    channel: "EMAIL",
-    priority: "HIGH",
-  });
+describe(
+  "Notification",
+  () => {
 
-  expect(n.domainEvents.length).toBe(1);
-});\n===== tests/unit/domain/NotificationStatus.extra.test.js =====\n
+    test(
+      "domain event created",
+      () => {
+
+        const n =
+          Notification.create({
+            id: "1",
+            recipient:
+              "test@test.com",
+            message:
+              "hello",
+            channel:
+              "EMAIL",
+            priority:
+              "HIGH",
+          });
+
+        expect(
+          n.domainEvents.length,
+        ).toBe(1);
+
+        expect(
+          n.domainEvents[0].stream,
+        ).toBe(
+          "notifications:created",
+        );
+
+      },
+    );
+
+  },
+);\n===== tests/unit/domain/NotificationStatus.extra.test.js =====\n
 // tests/unit/domain/NotificationStatus.extra.test.js
 
 import NotificationStatus from "../../../src/domain/value-objects/NotificationStatus.js";
@@ -631,7 +769,73 @@ describe("Value Objects", () => {
     expect(() => new Priority("ULTRA")).toThrow();
   });
 
-});\n===== tests/unit/infrastructure/NotificationMapper.null.test.js =====\n
+});\n===== tests/unit/domain/NotificationCreated.test.js =====\n
+// tests/unit/domain/NotificationCreated.test.js
+
+import NotificationCreated
+  from "../../../src/domain/events/NotificationCreated.js";
+
+describe(
+  "NotificationCreated",
+  () => {
+
+    test(
+      "contains stream name",
+      () => {
+
+        const event =
+          new NotificationCreated({
+            id: "1",
+            recipient: "a@test.com",
+            message: "hello",
+            channel: "EMAIL",
+            priority: "HIGH",
+          });
+
+        expect(
+          event.stream,
+        ).toBe(
+          "notifications:created",
+        );
+
+      },
+    );
+
+    test(
+      "toJSON returns payload",
+      () => {
+
+        const event =
+          new NotificationCreated({
+            id: "1",
+            recipient: "a@test.com",
+            message: "hello",
+            channel: "EMAIL",
+            priority: "HIGH",
+          });
+
+        const json =
+          event.toJSON();
+
+        expect(
+          json.eventCode,
+        ).toBeDefined();
+
+        expect(
+          json.id,
+        ).toBe("1");
+
+        expect(
+          json.recipient,
+        ).toBe(
+          "a@test.com",
+        );
+
+      },
+    );
+
+  },
+);\n===== tests/unit/infrastructure/NotificationMapper.null.test.js =====\n
 // tests/unit/infrastructure/NotificationMapper.null.test.js
 
 import NotificationMapper from "../../../src/infrastructure/mappers/NotificationMapper.js";
@@ -676,24 +880,28 @@ describe("NotificationMapper", () => {
     expect(NotificationMapper.toDomainList(null)).toEqual([]);
   });
 
-});\n===== tests/unit/infrastructure/RedisPublisher.test.js =====\n
-// tests/unit/infrastructure/RedisPublisher.test.js
+});\n===== tests/unit/infrastructure/RedisStreamPublisher.test.js =====\n
+// tests/unit/infrastructure/RedisStreamPublisher.test.js
 
-import RedisPublisher from "../../../src/infrastructure/messaging/redis/RedisPublisher.js";
+import RedisStreamPublisher
+from "../../../src/infrastructure/messaging/redis/RedisStreamPublisher.js";
 
-describe("RedisPublisher", () => {
+describe("RedisStreamPublisher", () => {
 
   test("disabled mode skips publish", async () => {
-    const pub = new RedisPublisher({ disabled: true });
 
-    await expect(pub.publish("x", { a: 1 })).resolves.toBeUndefined();
-  });
+    const publisher =
+      new RedisStreamPublisher({
+        disabled: true,
+      });
 
-  test("string message passthrough logic", () => {
-    const pub = new RedisPublisher({ disabled: true });
+    await expect(
+      publisher.publish(
+        "notifications:created",
+        { id: "1" },
+      ),
+    ).resolves.toBeUndefined();
 
-    const result = typeof pub.publish === "function";
-    expect(result).toBe(true);
   });
 
 });

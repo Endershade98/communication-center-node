@@ -9,8 +9,8 @@ from "../infrastructure/repositories/NotificationRepositoryMySQL.js";
 import NotificationRepositoryInMemory
 from "../infrastructure/repositories/NotificationRepositoryInMemory.js";
 
-import RedisPublisher
-from "../infrastructure/messaging/redis/RedisPublisher.js";
+import RedisStreamPublisher
+from "../infrastructure/messaging/redis/RedisStreamPublisher.js";
 
 export function createContainer() {
 
@@ -23,10 +23,11 @@ export function createContainer() {
       : new NotificationRepositoryMySQL(prisma);
 
   const eventPublisher =
-    new RedisPublisher();
+    new RedisStreamPublisher();
 
   return {
     notificationRepository,
-    eventPublisher
+    eventPublisher,
   };
+
 }

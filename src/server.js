@@ -2,7 +2,7 @@
 
 import express from "express";
 import NotificationRepositoryInMemory from "./infrastructure/repositories/NotificationRepositoryInMemory.js";
-import RedisPublisher from "./infrastructure/messaging/redis/RedisPublisher.js";
+import RedisStreamPublisher from "./infrastructure/messaging/redis/RedisStreamPublisher.js";
 import createRoutes from "./interfaces/routes/notificationRoutes.js";
 import errorHandler from "./interfaces/middlewares/errorHandler.js";
 
@@ -14,7 +14,8 @@ export function createServer({ repo, publisher } = {}) {
     repo ?? new NotificationRepositoryInMemory();
 
   const eventPublisher =
-    publisher ?? new RedisPublisher();
+    publisher ??
+    new RedisStreamPublisher();
 
   app.use("/notifications", createRoutes(repository, eventPublisher));
 

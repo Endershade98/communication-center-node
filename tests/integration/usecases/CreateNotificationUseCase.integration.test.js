@@ -5,13 +5,20 @@ import NotificationRepositoryMySQL from "../../../src/infrastructure/repositorie
 import { prismaTest } from "../../setup/prismaTestClient.js";
 
 class FakePublisher {
+
   constructor() {
     this.events = [];
   }
 
-  async publish(event, payload) {
-    this.events.push({ event, payload });
+  async publish(stream, payload) {
+
+    this.events.push({
+      stream,
+      payload,
+    });
+
   }
+
 }
 
 afterEach(async () => {
@@ -32,7 +39,14 @@ describe("CreateNotificationUseCase (integration)", () => {
       priority: "HIGH",
     });
 
-    expect(result.id).toBeDefined();
-    expect(publisher.events.length).toBeGreaterThan(0);
+    expect(
+      publisher.events[0].stream,
+    ).toBe(
+      "notifications:created",
+    );
+    
+    expect(
+      publisher.events[0].payload.id,
+    ).toBeDefined();
   });
 });
