@@ -1,6 +1,10 @@
 // src/domain/events/NotificationRetryScheduled.js
 
-import { EventCodes } from "../constants/EventCodes.js";
+import { EventCodes }
+from "../constants/EventCodes.js";
+
+import { RedisStreams }
+from "../../infrastructure/messaging/redis/RedisStreams.js";
 
 export default class NotificationRetryScheduled {
 
@@ -8,31 +12,43 @@ export default class NotificationRetryScheduled {
   #occurredAt;
 
   constructor(notificationId) {
+
     if (!notificationId) {
-      throw new Error("Notification id is required");
+      throw new Error(
+        "Notification id is required"
+      );
     }
 
-    this.#notificationId = notificationId;
-    this.#occurredAt = new Date();
+    this.#notificationId =
+      notificationId;
 
-    // Object.freeze(this);
+    this.#occurredAt =
+      new Date();
   }
 
-  get notificationId() {
-    return this.#notificationId;
-  }
+  get stream() {
 
-  get occurredAt() {
-    return this.#occurredAt;
+    return RedisStreams
+      .NOTIFICATION_RETRY;
+
   }
 
   toJSON() {
-    return {
-      eventName: "notification.retry",
-      eventCode: EventCodes.NOTIFICATION_RETRY,
 
-      notificationId: this.#notificationId,
-      occurredAt: this.#occurredAt,
+    return {
+      eventName:
+        "notification.retry",
+
+      eventCode:
+        EventCodes.NOTIFICATION_RETRY,
+
+      notificationId:
+        this.#notificationId,
+
+      occurredAt:
+        this.#occurredAt,
     };
+
   }
+
 }

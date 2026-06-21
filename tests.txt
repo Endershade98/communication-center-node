@@ -460,7 +460,7 @@ export async function runInTransaction(fn) {
 // tests/unit/application/DomainEventDispatcher.test.js
 
 import DomainEventDispatcher
-from "../../../src/application/services/DomainEventDispatcher.js";
+  from "../../../src/application/services/DomainEventDispatcher.js";
 
 class FakePublisher {
 
@@ -469,47 +469,72 @@ class FakePublisher {
   }
 
   async publish(stream, payload) {
+
     this.calls.push({
       stream,
       payload,
     });
+
   }
 
 }
 
-test("dispatch publishes to stream", async () => {
+describe(
+  "DomainEventDispatcher",
+  () => {
 
-  const publisher =
-    new FakePublisher();
+    test(
+      "dispatch publishes to stream",
+      async () => {
 
-  const dispatcher =
-    new DomainEventDispatcher(
-      publisher,
+        const publisher =
+          new FakePublisher();
+
+        const dispatcher =
+          new DomainEventDispatcher(
+            publisher,
+          );
+
+        const fakeEvent = {
+
+          stream:
+            "notifications:created",
+
+          toJSON() {
+
+            return {
+              id: "123",
+            };
+
+          },
+
+        };
+
+        await dispatcher.dispatch([
+          fakeEvent,
+        ]);
+
+        expect(
+          publisher.calls,
+        ).toHaveLength(1);
+
+        expect(
+          publisher.calls[0].stream,
+        ).toBe(
+          "notifications:created",
+        );
+
+        expect(
+          publisher.calls[0].payload,
+        ).toEqual({
+          id: "123",
+        });
+
+      },
     );
 
-  const fakeEvent = {
-    streamName: "notifications:created",
-
-    toJSON() {
-      return {
-        id: "123",
-      };
-    },
-  };
-
-  await dispatcher.dispatch([
-    fakeEvent,
-  ]);
-
-  expect(
-    publisher.calls.length,
-  ).toBe(1);
-
-  expect(
-    publisher.calls[0].stream,
-  ).toBe("notifications:created");
-
-});\n===== tests/unit/domain/Notification.branches.test.js =====\n
+  },
+);\n===== tests/unit/domain/Notification.branches.test.js =====\n
 // tests/unit/domain/Notification.branches.test.js
 
 import Notification from "../../../src/domain/entities/Notification.js";
@@ -640,24 +665,45 @@ describe("Notification extra", () => {
 });\n===== tests/unit/domain/Notification.test.js =====\n
 // tests/unit/domain/Notification.test.js
 
-import Notification from "../../../src/domain/entities/Notification.js";
+import Notification
+  from "../../../src/domain/entities/Notification.js";
 
-test("domain event created", () => {
-  const n = Notification.create({
-    id: "1",
-    recipient: "test@test.com",
-    message: "hello",
-    channel: "EMAIL",
-    priority: "HIGH",
-  });
+describe(
+  "Notification",
+  () => {
 
-  expect(n.domainEvents.length).toBe(1);
-  expect(
-    n.domainEvents[0].streamName
-  ).toBe(
-    "notifications:created"
-  );
-});\n===== tests/unit/domain/NotificationStatus.extra.test.js =====\n
+    test(
+      "domain event created",
+      () => {
+
+        const n =
+          Notification.create({
+            id: "1",
+            recipient:
+              "test@test.com",
+            message:
+              "hello",
+            channel:
+              "EMAIL",
+            priority:
+              "HIGH",
+          });
+
+        expect(
+          n.domainEvents.length,
+        ).toBe(1);
+
+        expect(
+          n.domainEvents[0].stream,
+        ).toBe(
+          "notifications:created",
+        );
+
+      },
+    );
+
+  },
+);\n===== tests/unit/domain/NotificationStatus.extra.test.js =====\n
 // tests/unit/domain/NotificationStatus.extra.test.js
 
 import NotificationStatus from "../../../src/domain/value-objects/NotificationStatus.js";
@@ -727,7 +773,7 @@ describe("Value Objects", () => {
 // tests/unit/domain/NotificationCreated.test.js
 
 import NotificationCreated
-from "../../../src/domain/events/NotificationCreated.js";
+  from "../../../src/domain/events/NotificationCreated.js";
 
 describe(
   "NotificationCreated",
@@ -747,9 +793,42 @@ describe(
           });
 
         expect(
-          event.streamName,
+          event.stream,
         ).toBe(
           "notifications:created",
+        );
+
+      },
+    );
+
+    test(
+      "toJSON returns payload",
+      () => {
+
+        const event =
+          new NotificationCreated({
+            id: "1",
+            recipient: "a@test.com",
+            message: "hello",
+            channel: "EMAIL",
+            priority: "HIGH",
+          });
+
+        const json =
+          event.toJSON();
+
+        expect(
+          json.eventCode,
+        ).toBeDefined();
+
+        expect(
+          json.id,
+        ).toBe("1");
+
+        expect(
+          json.recipient,
+        ).toBe(
+          "a@test.com",
         );
 
       },

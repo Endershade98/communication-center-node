@@ -4,6 +4,7 @@ import NotificationStatus from "../value-objects/NotificationStatus.js";
 import Channel from "../value-objects/Channel.js";
 import Priority from "../value-objects/Priority.js";
 
+import NotificationRetryScheduled from "../events/NotificationRetryScheduled.js";
 import NotificationCreated from "../events/NotificationCreated.js";
 import NotificationSent from "../events/NotificationSent.js";
 import NotificationFailed from "../events/NotificationFailed.js";
@@ -183,12 +184,24 @@ export default class Notification {
   }
 
   retry() {
-    const target = NotificationStatus.retrying();
+
+    const target =
+      NotificationStatus.retrying();
+
     this.#assertTransition(target);
 
-    return this.#clone({
-      status: target,
-    });
+    const updated =
+      this.#clone({
+        status: target,
+      });
+
+    updated.#addDomainEvent(
+      new NotificationRetryScheduled(
+        this.#id
+      )
+    );
+
+    return updated;
   }
 
   // =========================

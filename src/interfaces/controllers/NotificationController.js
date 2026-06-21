@@ -1,39 +1,115 @@
 // src/interfaces/controllers/NotificationController.js
 
-import SendNotificationDTO from "../../application/dto/SendNotificationDTO.js";
-import NotificationResponseDTO from "../../application/dto/NotificationResponseDTO.js";
+import SendNotificationDTO
+from "../../application/dto/SendNotificationDTO.js";
+
+import NotificationResponseDTO
+from "../../application/dto/NotificationResponseDTO.js";
 
 export default class NotificationController {
-  constructor(createNotificationUseCase, getNotificationByIdUseCase) {
-    this.createNotificationUseCase = createNotificationUseCase;
-    this.getNotificationByIdUseCase = getNotificationByIdUseCase;
+
+  constructor(
+    createNotificationUseCase,
+    getNotificationByIdUseCase,
+    getNotificationStatusUseCase
+  ) {
+
+    this.createNotificationUseCase =
+      createNotificationUseCase;
+
+    this.getNotificationByIdUseCase =
+      getNotificationByIdUseCase;
+
+    this.getNotificationStatusUseCase =
+      getNotificationStatusUseCase;
   }
 
-  async create(req, res, next) {
+  async create(
+    req,
+    res,
+    next
+  ) {
+
     try {
-      const dto = SendNotificationDTO.fromHttp(req.body);
 
-      const result = await this.createNotificationUseCase.execute(dto);
+      const dto =
+        SendNotificationDTO
+          .fromHttp(req.body);
 
-      const response = NotificationResponseDTO.fromDomain(result);
+      const result =
+        await this
+          .createNotificationUseCase
+          .execute(dto);
 
-      return res.status(201).json(response);
+      return res
+        .status(201)
+        .json(
+          NotificationResponseDTO
+            .fromDomain(result)
+        );
+
     } catch (err) {
+
       next(err);
+
     }
+
   }
 
-  async getById(req, res, next) {
+  async getById(
+    req,
+    res,
+    next
+  ) {
+
     try {
-      const { id } = req.params;
 
-      const result = await this.getNotificationByIdUseCase.execute(id);
+      const result =
+        await this
+          .getNotificationByIdUseCase
+          .execute(
+            req.params.id
+          );
 
-      const response = NotificationResponseDTO.fromDomain(result);
+      return res.json(
+        NotificationResponseDTO
+          .fromDomain(result)
+      );
 
-      return res.status(200).json(response);
     } catch (err) {
+
       next(err);
+
     }
+
   }
+
+  async getStatus(
+    req,
+    res,
+    next
+  ) {
+
+    try {
+
+      const status =
+        await this
+          .getNotificationStatusUseCase
+          .execute(
+            req.params.id
+          );
+
+      return res.json({
+        status:
+          status.value,
+      });
+
+    } catch (err) {
+
+      next(err);
+
+    }
+
+  }
+
 }
