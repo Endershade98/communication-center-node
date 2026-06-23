@@ -5,14 +5,33 @@
   "main": "src/server.js",
   "type": "module",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
 
-    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --detectOpenHandles",
-    "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/unit",
-    "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/integration",
-    "test:e2e": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/e2e"
-  },
+    "start":
+    "node src/index.js",
+
+    "worker":
+    "node src/workers/notificationWorker.js",
+
+    "dev":
+    "nodemon src/index.js",
+
+    "dev:worker":
+    "nodemon src/workers/notificationWorker.js",
+
+
+    "test":
+    "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --detectOpenHandles",
+
+    "test:unit":
+    "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/unit",
+
+    "test:integration":
+    "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/integration",
+
+    "test:e2e":
+    "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/e2e"
+
+    },
   "dependencies": {
     "express": "^5.2.1",
     "ioredis": "^5.10.1"

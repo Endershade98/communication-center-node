@@ -1,18 +1,27 @@
 // src/domain/value-objects/NotificationStatus.js
 
-import { NotificationCodes } from "../constants/NotificationCodes.js";
+import { NotificationCodes }
+from "../constants/NotificationCodes.js";
+
 
 const VALID_STATUSES = Object.freeze([
+
   "PENDING",
   "PROCESSING",
   "SENT",
   "FAILED",
   "RETRYING",
   "DEAD",
+
 ]);
 
+
 const ALLOWED_TRANSITIONS = Object.freeze({
-  PENDING: ["PROCESSING"],
+
+  PENDING: [
+    "PROCESSING"
+  ],
+
 
   PROCESSING: [
     "SENT",
@@ -20,93 +29,192 @@ const ALLOWED_TRANSITIONS = Object.freeze({
     "RETRYING"
   ],
 
+
   FAILED: [
     "RETRYING",
-    "DEAD",
+    "DEAD"
   ],
 
+
   RETRYING: [
-    "PROCESSING",
+    "PROCESSING"
   ],
+
 
   SENT: [],
 
-  DEAD: [],
+
+  DEAD: []
+
 });
+
+
 
 export default class NotificationStatus {
 
+
   #value;
 
-  constructor(value) {
-    if (!VALID_STATUSES.includes(value)) {
-      throw new Error(`Invalid NotificationStatus: ${value}`);
+
+
+  constructor(value){
+
+
+    if(
+      !VALID_STATUSES.includes(value)
+    ){
+
+      throw new Error(
+        `Invalid NotificationStatus: ${value}`
+      );
+
     }
 
-    this.#value = value;
 
-    // Object.freeze(this);
+    this.#value =
+      value;
+
   }
 
-  get value() {
+
+
+  get value(){
+
     return this.#value;
+
   }
 
-  get code() {
-    return NotificationCodes[this.#value];
+
+
+  get code(){
+
+    return NotificationCodes[
+      this.#value
+    ];
+
   }
 
-  canTransitionTo(targetStatus) {
+
+
+
+  canTransitionTo(targetStatus){
+
+
     const target =
       targetStatus instanceof NotificationStatus
         ? targetStatus.value
         : targetStatus;
 
-    return ALLOWED_TRANSITIONS[this.#value].includes(target);
+
+
+    return ALLOWED_TRANSITIONS[
+      this.#value
+    ]?.includes(target);
+
+
   }
 
-  equals(other) {
+
+
+
+  equals(other){
+
     return (
+
       other instanceof NotificationStatus &&
       other.value === this.#value
+
     );
+
   }
 
-  static pending() {
-    return new NotificationStatus("PENDING");
+
+
+
+  static pending(){
+
+    return new NotificationStatus(
+      "PENDING"
+    );
+
   }
 
-  static processing() {
-    return new NotificationStatus("PROCESSING");
+
+
+  static processing(){
+
+    return new NotificationStatus(
+      "PROCESSING"
+    );
+
   }
 
-  static sent() {
-    return new NotificationStatus("SENT");
+
+
+  static sent(){
+
+    return new NotificationStatus(
+      "SENT"
+    );
+
   }
 
-  static failed() {
-    return new NotificationStatus("FAILED");
+
+
+  static failed(){
+
+    return new NotificationStatus(
+      "FAILED"
+    );
+
   }
 
-  static retrying() {
-    return new NotificationStatus("RETRYING");
+
+
+  static retrying(){
+
+    return new NotificationStatus(
+      "RETRYING"
+    );
+
   }
 
-  static dead() {
-    return new NotificationStatus("DEAD");
+
+
+  static dead(){
+
+    return new NotificationStatus(
+      "DEAD"
+    );
+
   }
 
-  static canTransition(from, to) {
+
+
+
+  static canTransition(from,to){
+
+
     const source =
       from instanceof NotificationStatus
         ? from.value
         : from;
+
+
 
     const target =
       to instanceof NotificationStatus
         ? to.value
         : to;
 
-    return ALLOWED_TRANSITIONS[source]?.includes(target);
+
+
+    return (
+      ALLOWED_TRANSITIONS[source]
+      ?.includes(target)
+    );
+
   }
+
+
 }

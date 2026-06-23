@@ -3,16 +3,18 @@
 import Redis from "ioredis";
 
 import { StreamNames }
-from "../constants/StreamNames.js";
+from "../../domain/constants/StreamNames.js";
+
 
 const GROUP =
   "notification-workers";
+
 
 export async function createConsumerGroup() {
 
   const redis =
     new Redis(
-      process.env.REDIS_URL,
+      process.env.REDIS_URL
     );
 
   const streams = [
@@ -39,16 +41,27 @@ export async function createConsumerGroup() {
         "MKSTREAM",
       );
 
-    } catch (err) {
+      console.log(
+        `[REDIS] consumer group created for ${stream}`
+      );
+
+    }
+    catch (err) {
 
       if (
-        !err.message.includes(
-          "BUSYGROUP",
+        err.message.includes(
+          "BUSYGROUP"
         )
       ) {
-        throw err;
+
+        console.log(
+          `[REDIS] group already exists for ${stream}`
+        );
+
+        continue;
       }
 
+      throw err;
     }
 
   }

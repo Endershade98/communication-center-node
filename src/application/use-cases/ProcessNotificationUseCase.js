@@ -94,7 +94,9 @@ async execute(id){
     notification.status.value === "PROCESSING"
   ){
 
-    return notification;
+    throw new Error(
+      "Notification already processing"
+    );
 
   }
 

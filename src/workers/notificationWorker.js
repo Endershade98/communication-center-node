@@ -2,177 +2,121 @@
 
 import Redis from "ioredis";
 
-
 import {
- prisma
+  prisma
 }
 from "../infrastructure/database/prismaClient.js";
-
 
 import NotificationRepositoryMySQL
 from "../infrastructure/repositories/NotificationRepositoryMySQL.js";
 
-
-import { RedisStreams }
-from "../infrastructure/messaging/redis/RedisStreams.js";
-
+import NotificationProviderFactory
+from "../infrastructure/providers/NotificationProviderFactory.js";
 
 import ProcessNotificationUseCase
 from "../application/use-cases/ProcessNotificationUseCase.js";
 
+import NotificationWorker
+from "./NotificationWorker.js";
 
-import NotificationProviderFactory
-from "../infrastructure/providers/NotificationProviderFactory.js";
+import {
+  createConsumerGroup
+}
+from "./bootstrap/createConsumerGroup.js";
 
 
 const GROUP =
-"notification-workers";
-
+  "notification-workers";
 
 const CONSUMER =
-`worker-${process.pid}`;
+  `worker-${process.pid}`;
 
 
+async function bootstrap() {
 
-async function start(){
+  await createConsumerGroup();
 
+  const redis =
+    new Redis(
+      process.env.REDIS_URL
+    );
 
-const redis =
-new Redis(
- process.env.REDIS_URL
-);
+  const repository =
+    new NotificationRepositoryMySQL(
+      prisma
+    );
 
+  const providerFactory =
+    new NotificationProviderFactory({
 
+      emailApiKey:
+        process.env.EMAIL_API_KEY,
 
-const repository =
-new NotificationRepositoryMySQL(
- prisma
-);
+      emailFrom:
+        process.env.EMAIL_FROM,
 
+      smsApiKey:
+        process.env.SMS_API_KEY,
 
+      pushKey:
+        process.env.PUSH_KEY,
 
-const providerFactory =
-new NotificationProviderFactory({
+    });
 
- emailApiKey:
- process.env.EMAIL_API_KEY,
+  const publisher = {
 
- emailFrom:
- process.env.EMAIL_FROM,
+    async publish(
+      stream,
+      payload
+    ) {
 
- smsApiKey:
- process.env.SMS_API_KEY
+      await redis.xadd(
+        stream,
+        "*",
+        "data",
+        JSON.stringify(payload)
+      );
+
+    }
+
+  };
+
+  const processUseCase =
+    new ProcessNotificationUseCase(
+
+      repository,
+
+      providerFactory,
+
+      publisher,
+
+    );
+
+  const worker =
+    new NotificationWorker({
+
+      redis,
+
+      group: GROUP,
+
+      consumer: CONSUMER,
+
+      processNotificationUseCase:
+        processUseCase,
+
+    });
+
+  await worker.start();
+
+}
+
+bootstrap().catch(err => {
+
+  console.error(
+    "[WORKER BOOT ERROR]",
+    err
+  );
+
+  process.exit(1);
 
 });
-
-
-
-const useCase =
-new ProcessNotificationUseCase(
- repository,
- providerFactory,
- {
-   publish: async (stream,payload)=>{
-
-     await redis.xadd(
-       stream,
-       "*",
-       "data",
-       JSON.stringify(payload)
-     );
-
-   }
- }
-);
-
-
-
-while(true){
-
-
-const response =
-await redis.xreadgroup(
-"GROUP",
-GROUP,
-CONSUMER,
-"BLOCK",
-5000,
-"COUNT",
-1,
-"STREAMS",
-RedisStreams.NOTIFICATION_CREATED,
-">"
-);
-
-
-
-if(!response)
-continue;
-
-
-
-const messages =
-response[0][1];
-
-
-
-for(
-const [
-id,
-fields
-]
-of messages
-){
-
-
-
-const payload =
-JSON.parse(
- fields[1]
-);
-
-
-
-try{
-
-
-await useCase.execute(
- payload.id
-);
-
-
-
-await redis.xack(
- RedisStreams.NOTIFICATION_CREATED,
- GROUP,
- id
-);
-
-
-
-}
-
-catch(err){
-
-console.error(
-err
-);
-
-// niente ACK
-// Redis redelivera
-
-}
-
-
-}
-
-
-
-}
-
-
-}
-
-
-
-start();
