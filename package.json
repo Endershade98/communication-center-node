@@ -15,8 +15,8 @@
     "dev":
     "nodemon src/index.js",
 
-    "dev:worker":
-    "nodemon src/workers/notificationWorker.js",
+    "dev:worker": 
+    "node --env-file=.env src/workers/notificationWorker.js",
 
 
     "test":

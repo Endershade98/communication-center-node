@@ -44,6 +44,22 @@ export default class NotificationRepositoryMySQL {
     return NotificationMapper.toDomainList(records);
   }
 
+  async findProcessingNotifications(){
+
+    const records =
+    await this.prisma.notification.findMany({
+      where:{
+        status:"PROCESSING"
+      }
+    });
+
+
+    return NotificationMapper.toDomainList(
+      records
+    );
+
+    }
+
   async update(notification) {
     return this.save(notification);
   }

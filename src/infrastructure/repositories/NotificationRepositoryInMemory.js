@@ -78,4 +78,17 @@ extends NotificationRepository {
 
   }
 
+  async findProcessingNotifications(){
+
+    return Array
+    .from(
+      this.notifications.values()
+    )
+    .filter(
+      n =>
+      n.status.value === "PROCESSING"
+    );
+
+    }
+
 }

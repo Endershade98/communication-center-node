@@ -1,7 +1,3 @@
-// src/workers/NotificationWorker.js
-
-import Redis from "ioredis";
-
 import { RedisStreams }
 from "../infrastructure/messaging/redis/RedisStreams.js";
 
@@ -10,22 +6,18 @@ export default class NotificationWorker {
 
 
 constructor({
-  redis,
-  group,
-  consumer,
-  processNotificationUseCase
-}) {
+ redis,
+ group,
+ consumer,
+ processNotificationUseCase
+}){
 
-  this.redis = redis;
+ this.redis = redis;
+ this.group = group;
+ this.consumer = consumer;
+ this.useCase = processNotificationUseCase;
 
-  this.group = group;
-
-  this.consumer = consumer;
-
-  this.useCase =
-    processNotificationUseCase;
-
-  this.running = false;
+ this.running=false;
 
 }
 
@@ -34,16 +26,19 @@ constructor({
 async start(){
 
 
-this.running = true;
+this.running=true;
 
 
 console.log(
- `[WORKER] started ${this.consumer}`
+ `[WORKER] ${this.consumer} started`
 );
 
 
 
 while(this.running){
+
+
+ try{
 
 
  const response =
@@ -61,9 +56,8 @@ while(this.running){
  );
 
 
- if(!response){
-   continue;
- }
+ if(!response)
+ continue;
 
 
 
@@ -72,65 +66,92 @@ while(this.running){
 
 
 
- for(
- const [
-   messageId,
-   fields
- ]
- of messages
- ){
+ for(const [id,fields] of messages){
 
 
-   const payload =
-   JSON.parse(
-     fields[1]
-   );
+ const payload =
+ JSON.parse(
+   fields[1]
+ );
 
 
 
-   try{
+ await this.process(
+   id,
+   payload
+ );
 
 
-     await this.useCase.execute(
-       payload.id
-     );
-
-
-
-     await this.redis.xack(
-       RedisStreams.NOTIFICATION_CREATED,
-       this.group,
-       messageId
-     );
-
-
-     console.log(
-       `[WORKER] processed ${payload.id}`
-     );
+ }
 
 
 
-   }
-   catch(error){
+ }
+ catch(err){
 
-
-     console.error(
-       "[WORKER ERROR]",
-       error.message
-     );
-
-
-     // niente ACK
-     // redis farà retry
-
-
-   }
+ console.error(
+  "[WORKER LOOP ERROR]",
+  err.message
+ );
 
 
  }
 
 
 }
+
+
+
+}
+
+
+
+async process(
+ messageId,
+ payload
+){
+
+
+ try{
+
+
+ await this.useCase.execute(
+   payload.id
+ );
+
+
+
+ await this.redis.xack(
+  RedisStreams.NOTIFICATION_CREATED,
+  this.group,
+  messageId
+ );
+
+
+
+ console.log(
+ `[WORKER] completed ${payload.id}`
+ );
+
+
+
+ }
+ catch(error){
+
+
+ console.error(
+  "[WORKER FAILED]",
+  payload.id,
+  error.message
+ );
+
+
+ // no ACK
+ // Redis mantiene pending
+
+
+ }
+
 
 
 }
@@ -144,7 +165,6 @@ async stop(){
  await this.redis.quit();
 
 }
-
 
 
 }

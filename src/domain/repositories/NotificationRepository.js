@@ -45,4 +45,11 @@ export default class NotificationRepository {
     );
   }
 
+
+  async findProcessingNotifications() {
+    throw new Error(
+      "findProcessingNotifications() not implemented"
+    );
+  }
+
 }
