@@ -17,6 +17,7 @@ const ALLOWED_TRANSITIONS = Object.freeze({
   PROCESSING: [
     "SENT",
     "FAILED",
+    "RETRYING"
   ],
 
   FAILED: [

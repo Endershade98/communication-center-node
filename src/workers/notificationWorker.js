@@ -13,7 +13,7 @@ import NotificationRepositoryMySQL
 from "../infrastructure/repositories/NotificationRepositoryMySQL.js";
 
 
-import RedisStreams
+import { RedisStreams }
 from "../infrastructure/messaging/redis/RedisStreams.js";
 
 
@@ -70,7 +70,19 @@ new NotificationProviderFactory({
 const useCase =
 new ProcessNotificationUseCase(
  repository,
- providerFactory
+ providerFactory,
+ {
+   publish: async (stream,payload)=>{
+
+     await redis.xadd(
+       stream,
+       "*",
+       "data",
+       JSON.stringify(payload)
+     );
+
+   }
+ }
 );
 
 
