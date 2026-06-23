@@ -11,7 +11,7 @@ export default class NotificationController {
   constructor(
     createNotificationUseCase,
     getNotificationByIdUseCase,
-    getNotificationStatusUseCase
+    getNotificationStatusUseCase,
   ) {
 
     this.createNotificationUseCase =
@@ -22,58 +22,27 @@ export default class NotificationController {
 
     this.getNotificationStatusUseCase =
       getNotificationStatusUseCase;
+
   }
 
-  async create(
-    req,
-    res,
-    next
-  ) {
+  async create(req, res, next) {
 
     try {
 
       const dto =
-        SendNotificationDTO
-          .fromHttp(req.body);
-
-      const result =
-        await this
-          .createNotificationUseCase
-          .execute(dto);
-
-      return res
-        .status(201)
-        .json(
-          NotificationResponseDTO
-            .fromDomain(result)
+        SendNotificationDTO.fromHttp(
+          req.body,
         );
 
-    } catch (err) {
+      const notification =
+        await this.createNotificationUseCase.execute(
+          dto,
+        );
 
-      next(err);
-
-    }
-
-  }
-
-  async getById(
-    req,
-    res,
-    next
-  ) {
-
-    try {
-
-      const result =
-        await this
-          .getNotificationByIdUseCase
-          .execute(
-            req.params.id
-          );
-
-      return res.json(
-        NotificationResponseDTO
-          .fromDomain(result)
+      return res.status(201).json(
+        NotificationResponseDTO.fromDomain(
+          notification,
+        ),
       );
 
     } catch (err) {
@@ -84,24 +53,40 @@ export default class NotificationController {
 
   }
 
-  async getStatus(
-    req,
-    res,
-    next
-  ) {
+  async getById(req, res, next) {
+
+    try {
+
+      const notification =
+        await this.getNotificationByIdUseCase.execute(
+          req.params.id,
+        );
+
+      return res.status(200).json(
+        NotificationResponseDTO.fromDomain(
+          notification,
+        ),
+      );
+
+    } catch (err) {
+
+      next(err);
+
+    }
+
+  }
+
+  async getStatus(req, res, next) {
 
     try {
 
       const status =
-        await this
-          .getNotificationStatusUseCase
-          .execute(
-            req.params.id
-          );
+        await this.getNotificationStatusUseCase.execute(
+          req.params.id,
+        );
 
-      return res.json({
-        status:
-          status.value,
+      return res.status(200).json({
+        status: status.value,
       });
 
     } catch (err) {

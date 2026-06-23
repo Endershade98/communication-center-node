@@ -11,6 +11,8 @@ export default class NotificationResponseDTO {
     this.createdAt = notification.createdAt;
     this.sentAt = notification.sentAt;
     this.failedAt = notification.failedAt;
+    this.retryCount = notification.retryCount;
+    this.lastError = notification.lastError;
   }
 
   static fromDomain(notification) {

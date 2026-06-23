@@ -2,246 +2,769 @@
 
 ## Overview
 
-Questo progetto è sviluppato seguendo un approccio **incrementale e enterprise-grade**, basato su:
+Communication Center Node è un sistema distribuito per la gestione e consegna asincrona di notifiche.
 
-- Domain-Driven Design (DDD)
-- Event-Driven Architecture
-- Polyglot Persistence
-- Test-first mindset (Unit / Integration / E2E)
+Il progetto segue un approccio incrementale enterprise-grade basato su:
 
-Ogni Epic introduce nuove capacità mantenendo il sistema sempre testato e funzionante.
+* Domain-Driven Design (DDD)
+* Event-Driven Architecture
+* Redis Streams
+* Consumer Groups
+* Polyglot Persistence
+* Hexagonal / Clean Architecture
+* Test-first mindset (Unit / Integration / E2E)
+
+L'obiettivo è costruire un sistema di notifiche:
+
+* scalabile
+* resiliente
+* estendibile
+* provider agnostic
+* pronto per produzione
+
+Ogni Epic mantiene il sistema funzionante e incrementa le capacità senza rompere i core business già implementati.
 
 ---
 
 # EPIC 1 — Core Domain & Persistence
 
 ## Obiettivo
-Definire il dominio e salvare notifiche in modo consistente.
+
+Definire il modello di dominio e garantire la persistenza delle notifiche.
 
 ## Feature
-- Entity: Notification
-- Value Objects: Channel, Priority, Status
-- Repository pattern
-- Implementazioni:
-  - InMemory
-  - MySQL (Prisma)
-- Use Case: CreateNotification
+
+* Entity:
+
+  * Notification
+
+* Value Objects:
+
+  * Channel
+  * Priority
+  * NotificationStatus
+
+* State Machine:
+
+  * PENDING
+  * PROCESSING
+  * SENT
+  * FAILED
+  * RETRYING
+  * DEAD
+
+* Repository Pattern
+
+Implementazioni:
+
+* InMemory Repository
+* MySQL Repository (Prisma)
+
+Use Case:
+
+* CreateNotification
 
 ## Test
-- Unit → Domain + Use Case
-- Integration → Repository (MySQL / InMemory)
+
+Unit:
+
+* Domain Entity
+* Value Objects
+* Domain Rules
+* Use Case
+
+Integration:
+
+* Repository MySQL
+* Repository InMemory
 
 ## Deliverable
-- Dominio stabile
-- Persistenza funzionante
+
+* Dominio stabile
+* Persistenza funzionante
+* Base per sistemi distribuiti
 
 ---
 
 # EPIC 2 — API Layer
 
 ## Obiettivo
-Esporre un'interfaccia REST per interagire con il sistema.
+
+Esporre il sistema tramite API REST.
 
 ## Feature
-- POST /notifications
-- GET /notifications/:id
-- Controller + DTO
-- Error handling middleware
+
+Endpoint:
+
+```
+POST /notifications
+
+GET /notifications/:id
+
+GET /notifications/:id/status
+```
+
+Componenti:
+
+* Controller
+* DTO
+* Middleware error handling
+* Request validation
 
 ## Test
-- Unit → Controller (mock use case)
-- Integration → API + repository
-- E2E → API + DB reale
+
+Unit:
+
+* Controller
+* DTO mapping
+
+Integration:
+
+* API + Repository
+
+E2E:
+
+* HTTP → Database
 
 ## Deliverable
-- API funzionante e testata
-- Supporto Postman / debugging
+
+API pubblica funzionante.
 
 ---
 
-# EPIC 3 — Event Publishing (Redis)
+# EPIC 3 — Event Driven Architecture con Redis Streams
 
 ## Obiettivo
-Rendere il sistema asincrono e disaccoppiato.
+
+Disaccoppiare la creazione delle notifiche dal processo di invio.
+
+Il sistema passa da una comunicazione sincrona ad un modello basato su eventi.
 
 ## Feature
-- RedisPublisher
-- Event: notification.created
-- Integrazione con Use Case
+
+Messaging Layer:
+
+* Redis Streams Publisher
+* Event Dispatcher
+
+Stream principali:
+
+```
+notifications:created
+```
+
+Eventi:
+
+* NotificationCreated
+
+Payload:
+
+```json
+{
+ id,
+ recipient,
+ message,
+ channel,
+ priority
+}
+```
+
+Consumer Group:
+
+```
+notification-workers
+```
 
 ## Test
-- Unit → Publisher (mock)
-- Integration → Redis
-- E2E → API → Redis
+
+Unit:
+
+* Event Dispatcher
+* Publisher
+
+Integration:
+
+* Redis Stream
+* Consumer Group bootstrap
+
+E2E:
+
+```
+API
+ |
+ v
+CreateNotificationUseCase
+ |
+ v
+Redis Stream
+```
 
 ## Deliverable
-- Sistema event-driven
+
+Sistema event-driven funzionante.
 
 ---
 
-# EPIC 4 — Worker Processing
+# EPIC 4 — Distributed Notification Worker
 
 ## Obiettivo
-Processare notifiche asincrone.
+
+Creare il motore distribuito di processamento notifiche.
 
 ## Feature
-- notificationWorker
-- Consumo eventi da Redis
-- Invio tramite provider (Email/SMS/Push)
-- Update stato (PROCESSING → SENT/FAILED)
+
+Worker:
+
+```
+notificationWorker
+```
+
+Basato su:
+
+* Redis Streams Consumer Group
+* Message acknowledgement
+* Consumer identity
+
+Pipeline:
+
+```
+Redis Stream
+
+      |
+      v
+
+Worker
+
+      |
+      v
+
+ProcessNotificationUseCase
+
+      |
+      v
+
+Provider
+
+      |
+      v
+
+Update Status
+```
+
+## Provider abstraction
+
+Supporto tramite interfaccia:
+
+```
+NotificationProvider
+```
+
+Canali:
+
+* EMAIL
+* SMS
+* PUSH
+
+Implementazioni iniziali:
+
+* Fake Provider
+* Provider adapters
+
+## Stati
+
+Successo:
+
+```
+PROCESSING
+     |
+     v
+ SENT
+```
+
+Errore:
+
+```
+PROCESSING
+     |
+     v
+ FAILED
+```
 
 ## Test
-- Unit → Worker logic
-- Integration → Redis + worker
-- E2E → API → Redis → Worker → DB
+
+Unit:
+
+* ProcessNotificationUseCase
+* Provider selection
+
+Integration:
+
+* Redis Stream
+* Worker
+* Database
+
+E2E:
+
+```
+API
+ |
+Redis Stream
+ |
+Worker
+ |
+Database
+```
 
 ## Deliverable
-- Pipeline completa di invio
+
+Prima pipeline distribuita di invio notifiche.
 
 ---
 
-# EPIC 5 — Retry & Failure Handling
+# EPIC 5 — Production Ready Notification Engine
 
 ## Obiettivo
-Gestire errori e retry in modo robusto.
+
+Rilasciare la prima versione stabile del sistema distribuito.
+
+A fine Epic 5 il sistema deve essere utilizzabile come notification service base.
 
 ## Feature
-- retryWorker
-- Retry policy (maxRetries, backoff)
-- Stati:
-  - FAILED
-  - RETRYING
-  - DEAD
 
-## Test
-- Unit → Retry logic
-- Integration → Retry flow
-- E2E → Failure → Retry → Outcome
+## Retry Engine
 
-## Deliverable
-- Sistema resiliente
+Implementazione:
+
+* RetryNotification Use Case
+* Retry policy
+* Max retry attempts
+
+Configurazione:
+
+```
+maxRetries
+backoffStrategy
+retryDelay
+```
+
+Flusso:
+
+```
+FAILED
+
+ |
+
+retry available?
+
+ |
+
+YES
+
+ |
+
+RETRYING
+
+ |
+
+PROCESSING
+```
 
 ---
 
-# EPIC 6 — Observability (MongoDB)
+## Dead Letter Queue
+
+Nuovo stream:
+
+```
+notifications:dead
+```
+
+Quando:
+
+```
+retryCount >= maxRetries
+```
+
+la notifica viene spostata in DLQ.
+
+---
+
+## Reliability
+
+Implementare:
+
+* idempotency
+* duplicate event protection
+* message acknowledgement
+* consumer recovery
+
+---
+
+## Test
+
+Unit:
+
+* RetryNotification
+* Retry policy
+* State transitions
+
+Integration:
+
+* Retry flow
+* DLQ flow
+* Worker recovery
+
+E2E:
+
+Scenario completo:
+
+```
+CREATE
+
+ |
+
+REDIS STREAM
+
+ |
+
+WORKER
+
+ |
+
+PROVIDER FAILURE
+
+ |
+
+RETRY
+
+ |
+
+SUCCESS / DEAD
+```
+
+---
+
+## Deliverable
+
+Release 1.0 del sistema notifiche distribuito:
+
+* API
+* Persistence
+* Redis Streams
+* Worker
+* Retry
+* DLQ
+* Provider abstraction
+
+Il sistema è funzionante e deployabile.
+
+---
+
+# EPIC 6 — Observability & Audit Trail
 
 ## Obiettivo
-Aggiungere audit trail e tracciabilità.
+
+Aggiungere tracciabilità completa del sistema.
 
 ## Feature
-- Event Store (MongoDB)
-- Notification logs
-- Tracking eventi:
-  - created
-  - sent
-  - failed
+
+Event Store:
+
+MongoDB
+
+Salvataggio:
+
+* NotificationCreated
+* NotificationSent
+* NotificationFailed
+* NotificationRetryScheduled
+
+Audit:
+
+* timestamp
+* status changes
+* provider response
+* errors
 
 ## Test
-- Unit → Event repository
-- Integration → MongoDB
-- E2E → Eventi salvati correttamente
+
+Unit:
+
+* Event repository
+
+Integration:
+
+* MongoDB persistence
+
+E2E:
+
+* Event history completa
 
 ## Deliverable
-- Audit completo
-- Debug avanzato
+
+Sistema osservabile e debuggabile.
 
 ---
 
-# EPIC 7 — Multi-Provider Strategy
+# EPIC 7 — Real Provider Integration
 
 ## Obiettivo
-Supportare diversi provider di notifica.
+
+Collegare provider reali.
 
 ## Feature
-- Email (SendGrid)
-- SMS (Twilio)
-- Push (Firebase)
-- Strategy pattern
+
+Email:
+
+* SMTP
+* SendGrid
+* AWS SES
+
+SMS:
+
+* Twilio
+
+Push:
+
+* Firebase Cloud Messaging
+
+Implementazione tramite Adapter Pattern.
 
 ## Test
-- Unit → Provider selection
-- Integration → Provider mock
-- E2E → Simulazione invio
+
+Unit:
+
+* Provider selection
+
+Integration:
+
+* Provider mock
+
+E2E:
+
+* Delivery simulation
 
 ## Deliverable
-- Sistema estendibile
+
+Sistema multi-canale reale.
 
 ---
 
-# EPIC 8 — Priority & Rate Limiting
+# EPIC 8 — Scalability & Performance
 
 ## Obiettivo
-Gestire carico e priorità.
+
+Gestire carichi elevati.
 
 ## Feature
-- Priority queue (HIGH, LOW)
-- Throttling
-- Rate limiting
+
+Priority processing:
+
+```
+HIGH
+NORMAL
+LOW
+```
+
+Rate limiting.
+
+Throttling.
+
+Worker scaling:
+
+* multiple consumers
+* horizontal scaling
+
+Redis Stream tuning:
+
+* batch consume
+* pending messages recovery
 
 ## Test
-- Priorità esecuzione
-- Gestione carico
+
+* Load simulation
+* Concurrency tests
 
 ## Deliverable
-- Sistema scalabile
+
+Sistema scalabile.
 
 ---
 
-# EPIC 9 — Security & Validation
+# EPIC 9 — Security & API Hardening
 
 ## Obiettivo
-Rendere l’API sicura e robusta.
+
+Preparare il servizio ad ambienti enterprise.
 
 ## Feature
-- Input validation (Joi/Zod)
-- Sanitizzazione
-- Rate limiting API
+
+Validation:
+
+* Joi / Zod
+
+Security:
+
+* authentication
+* authorization
+
+API protection:
+
+* rate limiting
+* sanitization
 
 ## Test
-- Input invalidi
-- Edge cases
+
+* Invalid payload
+* Unauthorized access
+* Security edge cases
 
 ## Deliverable
-- API production-ready
+
+API production ready.
 
 ---
 
-# EPIC 10 — Full End-to-End System
+# EPIC 10 — Deployment & Operations
 
 ## Obiettivo
-Validare l’intero sistema.
 
+Rendere il sistema operativo in ambiente reale.
+
+## Feature
+
+Docker:
+
+Services:
+
+```
+notification-api
+
+notification-worker
+
+mysql
+
+redis
+
+mongodb
+```
+
+CI/CD:
+
+* automated tests
+* migrations
+* deployment pipeline
+
+Monitoring:
+
+* logs
+* metrics
+* health checks
 
 ## Deliverable
-- Sistema completamente testato
+
+Sistema completo pronto al rilascio.
 
 ---
 
-# Test Strategy
+# Final Architecture
 
-| Tipo | Scopo |
-|------|------|
-| Unit | Logica isolata |
-| Integration | Integrazione componenti |
-| E2E | Flusso completo |
+```
+                 Client
+
+                   |
+
+                   v
+
+            Notification API
+
+                   |
+
+                   v
+
+        CreateNotificationUseCase
+
+                   |
+
+                   v
+
+              MySQL
+
+                   |
+
+                   v
+
+          Domain Event Dispatcher
+
+                   |
+
+                   v
+
+            Redis Streams
+
+                   |
+
+          +--------+--------+
+
+          |                 |
+
+          v                 v
+
+ Notification Worker     Retry Worker
+
+          |
+
+          v
+
+ ProcessNotificationUseCase
+
+          |
+
+          v
+
+ Provider Factory
+
+     |       |       |
+
+   Email    SMS    Push
+
+
+          |
+
+          v
+
+      Notification Status
+
+
+          |
+
+          v
+
+       MongoDB Audit
+```
 
 ---
 
-# Architettura finale
+# Technology Roles
 
-- MySQL → Source of truth
-- Redis → Messaging / Queue
-- MongoDB → Event store / Logs
+| Tecnologia    | Responsabilità         |
+| ------------- | ---------------------- |
+| MySQL         | Source of truth        |
+| Redis Streams | Event backbone / queue |
+| MongoDB       | Audit e storico eventi |
+| Prisma        | Persistence layer      |
+| Docker        | Runtime environment    |
+| Jest          | Test strategy          |
 
 ---
 
 # Obiettivo finale
 
-Costruire un sistema:
+Costruire un notification service:
 
-- scalabile
-- resiliente
-- osservabile
-- pronto per produzione
-
----
+* event-driven
+* distribuito
+* resiliente
+* osservabile
+* provider independent
+* pronto per produzione

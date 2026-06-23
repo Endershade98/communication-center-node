@@ -1,29 +1,72 @@
 // src/infrastructure/providers/NotificationProviderFactory.js
 
-import FakeEmailProvider from "./email/FakeEmailProvider.js";
+import EmailProvider
+from "./email/EmailProvider.js";
+
+import SmsProvider
+from "./sms/SmsProvider.js";
+
+import PushProvider
+from "./push/PushProvider.js";
+
 
 export default class NotificationProviderFactory {
 
-  constructor() {
 
-    this.providers = {
-      EMAIL: new FakeEmailProvider(),
-    };
+ constructor(config={}) {
 
-  }
 
-  get(channel) {
+ this.providers={
 
-    const provider =
-      this.providers[channel];
 
-    if (!provider) {
-      throw new Error(
-        `Provider not found for ${channel}`
-      );
-    }
+ EMAIL:
+ new EmailProvider({
+   apiKey:
+   config.emailApiKey,
+   from:
+   config.emailFrom
+ }),
 
-    return provider;
-  }
+
+ SMS:
+ new SmsProvider({
+   apiKey:
+   config.smsApiKey
+ }),
+
+
+ PUSH:
+ new PushProvider({
+   key:
+   config.pushKey
+ })
+
+
+ };
+
+
+ }
+
+
+
+ get(channel){
+
+
+ const provider =
+ this.providers[channel];
+
+
+ if(!provider){
+   throw new Error(
+    `Provider ${channel} not found`
+   );
+ }
+
+
+ return provider;
+
+
+ }
+
 
 }

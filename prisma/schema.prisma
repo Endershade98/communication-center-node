@@ -23,4 +23,6 @@ model Notification {
   failedAt   DateTime?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  retryCount Int @default(0)
+  lastError String?
 }

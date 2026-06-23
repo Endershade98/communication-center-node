@@ -13,6 +13,152 @@ export const prisma =
 
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
+}\n===== src/infrastructure/providers/push/PushProvider.js =====\n
+// src/infrastructure/providers/push/PushProvider.js
+
+import NotificationProvider
+from "../NotificationProvider.js";
+
+
+export default class PushProvider
+extends NotificationProvider {
+
+
+ constructor(config){
+   super();
+   this.config=config;
+ }
+
+
+ async send(notification){
+
+
+   console.log(
+    "[PUSH]",
+    notification.recipient
+   );
+
+
+   return {
+    success:true
+   };
+
+ }
+
+}\n===== src/infrastructure/providers/sms/SmsProvider.js =====\n
+// src/infrastructure/providers/sms/SmsProvider.js
+
+import NotificationProvider
+from "../NotificationProvider.js";
+
+
+export default class SmsProvider
+extends NotificationProvider {
+
+
+ constructor(config){
+   super();
+   this.config=config;
+ }
+
+
+
+ async send(notification){
+
+
+   if(!this.config.apiKey){
+     throw new Error(
+       "SMS provider missing config"
+     );
+   }
+
+
+   console.log(
+    "[SMS]",
+    notification.recipient,
+    notification.message
+   );
+
+
+   return {
+     success:true
+   };
+
+ }
+
+
+}\n===== src/infrastructure/providers/NotificationProviderFactory.js =====\n
+// src/infrastructure/providers/NotificationProviderFactory.js
+
+import EmailProvider
+from "./email/EmailProvider.js";
+
+import SmsProvider
+from "./sms/SmsProvider.js";
+
+import PushProvider
+from "./push/PushProvider.js";
+
+
+export default class NotificationProviderFactory {
+
+
+ constructor(config={}) {
+
+
+ this.providers={
+
+
+ EMAIL:
+ new EmailProvider({
+   apiKey:
+   config.emailApiKey,
+   from:
+   config.emailFrom
+ }),
+
+
+ SMS:
+ new SmsProvider({
+   apiKey:
+   config.smsApiKey
+ }),
+
+
+ PUSH:
+ new PushProvider({
+   key:
+   config.pushKey
+ })
+
+
+ };
+
+
+ }
+
+
+
+ get(channel){
+
+
+ const provider =
+ this.providers[channel];
+
+
+ if(!provider){
+   throw new Error(
+    `Provider ${channel} not found`
+   );
+ }
+
+
+ return provider;
+
+
+ }
+
+
 }\n===== src/infrastructure/providers/email/FakeEmailProvider.js =====\n
 // src/infrastructure/providers/email/FakeEmailProvider.js
 
@@ -24,6 +170,68 @@ export default class FakeEmailProvider {
       success: true
     };
 
+  }
+
+}\n===== src/infrastructure/providers/email/EmailProvider.js =====\n
+// src/infrastructure/providers/email/EmailProvider.js
+
+import NotificationProvider
+from "../NotificationProvider.js";
+
+
+export default class EmailProvider
+extends NotificationProvider {
+
+
+  constructor({
+    apiKey,
+    from
+  }) {
+
+    super();
+
+    this.apiKey = apiKey;
+    this.from = from;
+
+  }
+
+
+
+  async send(notification) {
+
+
+    if(!this.apiKey){
+      throw new Error(
+        "EMAIL_PROVIDER_API_KEY missing"
+      );
+    }
+
+
+    console.log(
+      "[EMAIL]",
+      {
+        from:this.from,
+        to:notification.recipient,
+        message:notification.message
+      }
+    );
+
+
+    return {
+      success:true
+    };
+
+  }
+
+}\n===== src/infrastructure/providers/NotificationProvider.js =====\n
+// src/infrastructure/providers/NotificationProvider.js
+
+export default class NotificationProvider {
+
+  async send(notification) {
+    throw new Error(
+      "Provider send() not implemented"
+    );
   }
 
 }\n===== src/infrastructure/mappers/NotificationMapper.js =====\n
@@ -46,6 +254,8 @@ export default class NotificationMapper {
       createdAt: notification.createdAt,
       sentAt: notification.sentAt,
       failedAt: notification.failedAt,
+      retryCount: notification.retryCount,
+      lastError: notification.lastError,
     };
   }
 
@@ -62,6 +272,8 @@ export default class NotificationMapper {
       createdAt: record.createdAt,
       sentAt: record.sentAt,
       failedAt: record.failedAt,
+      retryCount: record.retryCount,
+      lastError: record.lastError,
     });
   }
 
@@ -69,94 +281,6 @@ export default class NotificationMapper {
     if (!Array.isArray(records)) return [];
     return records.map(r => this.toDomain(r)).filter(Boolean);
   }
-}\n===== src/infrastructure/messaging/redis/RedisStreamPublisher.js =====\n
-// src/infrastructure/messaging/redis/RedisStreamPublisher.js
-
-import Redis from "ioredis";
-
-export default class RedisStreamPublisher {
-
-  constructor({
-    host = "127.0.0.1",
-    port = 6379,
-    redisClient,
-    disabled = process.env.NODE_ENV === "test",
-  } = {}) {
-
-    this.disabled = disabled;
-
-    if (this.disabled) return;
-
-    this.redis =
-      redisClient ??
-      new Redis({
-        host,
-        port,
-      });
-  }
-
-  async publish(stream, payload) {
-
-    if (this.disabled) return;
-
-    await this.redis.xadd(
-      stream,
-      "*",
-      "data",
-      JSON.stringify(payload)
-    );
-  }
-
-  async disconnect() {
-
-    if (this.disabled) return;
-
-    await this.redis.quit();
-  }
-
-}\n===== src/infrastructure/messaging/redis/RedisStreams.js =====\n
-// src/infrastructure/messaging/redis/RedisStreams.js
-
-export const RedisStreams = Object.freeze({
-
-  NOTIFICATION_CREATED:
-    "notifications:created",
-
-});\n===== src/infrastructure/repositories/NotificationRepositoryInMemory.js =====\n
-// src/infrastructure/repositories/NotificationRepositoryInMemory.js
-
-import NotificationRepository from "../../domain/repositories/NotificationRepository.js";
-
-export default class NotificationRepositoryInMemory extends NotificationRepository {
-
-  constructor() {
-    super();
-    this.notifications = new Map();
-  }
-
-  async save(notification) {
-    this.notifications.set(notification.id, notification);
-    return notification;
-  }
-
-  async update(notification) {
-    if (!this.notifications.has(notification.id)) {
-      throw new Error("Notification not found");
-    }
-
-    this.notifications.set(notification.id, notification);
-    return notification;
-  }
-
-  async findById(id) {
-    return this.notifications.get(id) || null;
-  }
-
-  async findByRecipient(recipient) {
-    return Array.from(this.notifications.values())
-      .filter(n => n.recipient === recipient);
-  }
-
 }\n===== src/infrastructure/repositories/NotificationRepositoryMySQL.js =====\n
 // src/infrastructure/repositories/NotificationRepositoryMySQL.js
 
@@ -207,7 +331,151 @@ export default class NotificationRepositoryMySQL {
   async update(notification) {
     return this.save(notification);
   }
-}\n===== src/application/dto/NotificationResponseDTO.js =====\n
+}\n===== src/infrastructure/repositories/NotificationRepositoryInMemory.js =====\n
+// src/infrastructure/repositories/NotificationRepositoryInMemory.js
+
+import NotificationRepository
+from "../../domain/repositories/NotificationRepository.js";
+
+export default class NotificationRepositoryInMemory
+extends NotificationRepository {
+
+  constructor() {
+    super();
+
+    this.notifications =
+      new Map();
+  }
+
+  async save(notification) {
+
+    this.notifications.set(
+      notification.id,
+      notification
+    );
+
+    return notification;
+  }
+
+  async update(notification) {
+
+    if (
+      !this.notifications.has(
+        notification.id
+      )
+    ) {
+      throw new Error(
+        "Notification not found"
+      );
+    }
+
+    this.notifications.set(
+      notification.id,
+      notification
+    );
+
+    return notification;
+  }
+
+  async findById(id) {
+
+    return (
+      this.notifications.get(id)
+      || null
+    );
+
+  }
+
+  async findByRecipient(recipient) {
+
+    return Array
+      .from(
+        this.notifications.values()
+      )
+      .filter(
+        n =>
+          n.recipient === recipient
+      );
+
+  }
+
+  async findFailedNotifications() {
+
+    return Array
+      .from(
+        this.notifications.values()
+      )
+      .filter(
+        n =>
+          n.status.value === "FAILED"
+      );
+
+  }
+
+}\n===== src/infrastructure/messaging/redis/RedisStreamPublisher.js =====\n
+// src/infrastructure/messaging/redis/RedisStreamPublisher.js
+
+import Redis from "ioredis";
+
+export default class RedisStreamPublisher {
+
+  constructor({
+    host = "127.0.0.1",
+    port = 6379,
+    redisClient,
+    disabled = process.env.NODE_ENV === "test",
+  } = {}) {
+
+    this.disabled = disabled;
+
+    if (this.disabled) return;
+
+    this.redis =
+      redisClient ??
+      new Redis({
+        host,
+        port,
+      });
+  }
+
+  async publish(stream, payload) {
+
+    if (this.disabled) return;
+
+    await this.redis.xadd(
+      stream,
+      "*",
+      "data",
+      JSON.stringify(payload)
+    );
+  }
+
+  async disconnect() {
+
+    if (this.disabled) return;
+
+    await this.redis.quit();
+  }
+
+}\n===== src/infrastructure/messaging/redis/RedisStreams.js =====\n
+// src/infrastructure/messaging/redis/RedisStreams.js
+
+export const RedisStreams =
+Object.freeze({
+
+  NOTIFICATION_CREATED:
+    "notifications:created",
+
+  NOTIFICATION_SENT:
+    "notifications:sent",
+
+  NOTIFICATION_FAILED:
+    "notifications:failed",
+
+  NOTIFICATION_RETRY:
+    "notifications:retry",
+
+});\n===== src/application/dto/NotificationResponseDTO.js =====\n
 // src/application/dto/NotificationResponseDTO.js
 
 export default class NotificationResponseDTO {
@@ -221,6 +489,8 @@ export default class NotificationResponseDTO {
     this.createdAt = notification.createdAt;
     this.sentAt = notification.sentAt;
     this.failedAt = notification.failedAt;
+    this.retryCount = notification.retryCount;
+    this.lastError = notification.lastError;
   }
 
   static fromDomain(notification) {
@@ -274,9 +544,7 @@ export default class DomainEventDispatcher {
 
   }
 
-}\n===== src/application/use-cases/GetNotificationStatus.js =====\n
-\n===== src/application/use-cases/RetryNotification.js =====\n
-\n===== src/application/use-cases/CreateNotificationUseCase.js =====\n
+}\n===== src/application/use-cases/CreateNotificationUseCase.js =====\n
 // src/application/use-cases/CreateNotificationUseCase.js
 
 import { randomUUID } from "crypto";
@@ -327,6 +595,219 @@ export default class GetNotificationByIdUseCase {
 
     return notification;
   }
+}\n===== src/application/use-cases/GetNotificationStatus.js =====\n
+// src/application/use-cases/GetNotificationStatus.js
+
+export default class GetNotificationStatus {
+
+  constructor(notificationRepository) {
+
+    this.notificationRepository =
+      notificationRepository;
+
+  }
+
+  async execute(id) {
+
+    if (!id) {
+      throw new Error("id is required");
+    }
+
+    const notification =
+      await this.notificationRepository.findById(
+        id,
+      );
+
+    if (!notification) {
+      throw new Error("Notification not found");
+    }
+
+    return notification.status;
+
+  }
+
+}\n===== src/application/use-cases/RetryNotification.js =====\n
+// src/application/use-cases/RetryNotification.js
+
+import DomainEventDispatcher
+from "../services/DomainEventDispatcher.js";
+
+export default class RetryNotification {
+
+  constructor(
+    notificationRepository,
+    eventPublisher
+  ) {
+
+    this.notificationRepository =
+      notificationRepository;
+
+    this.dispatcher =
+      new DomainEventDispatcher(
+        eventPublisher
+      );
+
+  }
+
+  async execute(id) {
+
+    if (!id) {
+      throw new Error("id is required");
+    }
+
+    const notification =
+      await this.notificationRepository
+        .findById(id);
+
+    if (!notification) {
+      throw new Error(
+        "Notification not found"
+      );
+    }
+
+    const updated =
+      notification.retry();
+
+    await this.notificationRepository
+      .update(updated);
+
+    await this.dispatcher.dispatch(
+      updated.domainEvents
+    );
+
+    updated.clearEvents();
+
+    return updated;
+  }
+
+}\n===== src/application/use-cases/ProcessNotificationUseCase.js =====\n
+// src/application/use-cases/ProcessNotificationUseCase.js
+
+import NotificationDomainService
+from "../../domain/services/NotificationDomainService.js";
+
+
+export default class ProcessNotificationUseCase {
+
+
+constructor(
+ repository,
+ providerFactory
+){
+
+this.repository =
+repository;
+
+
+this.providerFactory =
+providerFactory;
+
+
+this.domain =
+new NotificationDomainService();
+
+
+}
+
+
+
+async execute(id){
+
+
+
+let notification =
+await this.repository.findById(id);
+
+
+
+if(!notification){
+ throw new Error(
+  "Notification not found"
+ );
+}
+
+
+
+// idempotenza
+
+if(
+ notification.status.value==="SENT" ||
+ notification.status.value==="FAILED" ||
+ notification.status.value==="DEAD"
+){
+
+return notification;
+
+}
+
+
+
+
+notification =
+this.domain.process(
+ notification
+);
+
+
+
+await this.repository.update(
+ notification
+);
+
+
+
+try{
+
+
+const provider =
+this.providerFactory.get(
+ notification.channel.value
+);
+
+
+
+await provider.send(
+ notification
+);
+
+
+
+notification =
+this.domain.sent(
+ notification
+);
+
+
+
+}
+
+catch(error){
+
+
+notification =
+this.domain.failed(
+ notification,
+ error.message
+);
+
+
+}
+
+
+
+await this.repository.update(
+ notification
+);
+
+
+
+return notification;
+
+
+}
+
+
+
 }\n===== src/bootstrap/container.js =====\n
 // src/bootstrap/container.js
 
@@ -403,7 +884,7 @@ import Priority from "../value-objects/Priority.js";
 import NotificationCreated from "../events/NotificationCreated.js";
 import NotificationSent from "../events/NotificationSent.js";
 import NotificationFailed from "../events/NotificationFailed.js";
-
+import NotificationRetryScheduled from "../events/NotificationRetryScheduled.js";
 
 export default class Notification {
 
@@ -416,8 +897,9 @@ export default class Notification {
   #createdAt;
   #sentAt;
   #failedAt;
+  #retryCount;
+  #lastError;
 
-  // EVENT BUFFER 
   #domainEvents = [];
 
   constructor({
@@ -429,32 +911,49 @@ export default class Notification {
     status,
     createdAt,
     sentAt,
-    failedAt
+    failedAt,
+    retryCount = 0,
+    lastError = null,
   }) {
-    if (!id) throw new Error("Notification id is required");
-    if (!recipient) throw new Error("Recipient is required");
-    if (!message) throw new Error("Message is required");
+
+    if (!id) {
+      throw new Error("Notification id is required");
+    }
+
+    if (!recipient) {
+      throw new Error("Recipient is required");
+    }
+
+    if (!message) {
+      throw new Error("Message is required");
+    }
 
     this.#id = id;
     this.#recipient = recipient;
     this.#message = message;
 
-    this.#channel = channel instanceof Channel ? channel : new Channel(channel);
-    this.#priority = priority instanceof Priority ? priority : new Priority(priority);
-    this.#status = status instanceof NotificationStatus
-      ? status
-      : NotificationStatus.pending();
+    this.#channel =
+      channel instanceof Channel
+        ? channel
+        : new Channel(channel);
+
+    this.#priority =
+      priority instanceof Priority
+        ? priority
+        : new Priority(priority);
+
+    this.#status =
+      status instanceof NotificationStatus
+        ? status
+        : NotificationStatus.pending();
 
     this.#createdAt = createdAt || new Date();
     this.#sentAt = sentAt || null;
     this.#failedAt = failedAt || null;
 
-    // Object.freeze(this);
+    this.#retryCount = retryCount;
+    this.#lastError = lastError;
   }
-
-  // =========================
-  // GETTERS
-  // =========================
 
   get id() { return this.#id; }
   get recipient() { return this.#recipient; }
@@ -466,9 +965,13 @@ export default class Notification {
   get sentAt() { return this.#sentAt; }
   get failedAt() { return this.#failedAt; }
 
-  // =========================
-  // DOMAIN EVENTS
-  // =========================
+  get retryCount() {
+    return this.#retryCount;
+  }
+
+  get lastError() {
+    return this.#lastError;
+  }
 
   get domainEvents() {
     return [...this.#domainEvents];
@@ -478,22 +981,27 @@ export default class Notification {
     this.#domainEvents.length = 0;
   }
 
-  // =========================
-  // FACTORY METHOD (KEY CHANGE)
-  // =========================
+  static create({
+    id,
+    recipient,
+    message,
+    channel,
+    priority,
+  }) {
 
-  static create({ id, recipient, message, channel, priority }) {
-    const notification = new Notification({
-      id,
-      recipient,
-      message,
-      channel,
-      priority,
-      status: NotificationStatus.pending(),
-      createdAt: new Date(),
-    });
+    const notification =
+      new Notification({
+        id,
+        recipient,
+        message,
+        channel,
+        priority,
+        status: NotificationStatus.pending(),
+        createdAt: new Date(),
+        retryCount: 0,
+        lastError: null,
+      });
 
-    // domain event generated here
     notification.#addDomainEvent(
       new NotificationCreated({
         id,
@@ -502,111 +1010,174 @@ export default class Notification {
         channel: notification.#channel,
         priority: notification.#priority,
         createdAt: notification.#createdAt,
-      })
+      }),
     );
 
     return notification;
   }
 
-  // =========================
-  // PRIVATE EVENT HANDLING
-  // =========================
-
   #addDomainEvent(event) {
     this.#domainEvents.push(event);
   }
 
-  // =========================
-  // STATE MACHINE METHODS
-  // =========================
-
   #assertTransition(targetStatus) {
-    if (!this.#status.canTransitionTo(targetStatus)) {
+
+    if (
+      !this.#status.canTransitionTo(
+        targetStatus,
+      )
+    ) {
+
       throw new Error(
-        `Invalid transition from ${this.#status.value} to ${targetStatus.value}`
+        `Invalid transition from ${this.#status.value} to ${targetStatus.value}`,
       );
+
     }
+
   }
 
   markAsProcessing() {
-    const target = NotificationStatus.processing();
+
+    const target =
+      NotificationStatus.processing();
+
     this.#assertTransition(target);
 
     return this.#clone({
       status: target,
     });
+
   }
 
   markAsSent() {
-    const target = NotificationStatus.sent();
+
+    const target =
+      NotificationStatus.sent();
+
     this.#assertTransition(target);
 
-    const updated = this.#clone({
-      status: target,
-      sentAt: new Date(),
-    });
+    const updated =
+      this.#clone({
+        status: target,
+        sentAt: new Date(),
+        lastError: null,
+      });
 
     updated.#addDomainEvent(
-      new NotificationSent(this.#id)
+      new NotificationSent(this.#id),
     );
 
     return updated;
   }
 
-  markAsFailed() {
-    const target = NotificationStatus.failed();
+  markAsFailed(errorMessage = null) {
+
+    const target =
+      NotificationStatus.failed();
+
     this.#assertTransition(target);
 
-    const updated = this.#clone({
-      status: target,
-      failedAt: new Date(),
-    });
+    const updated =
+      this.#clone({
+        status: target,
+        failedAt: new Date(),
+        retryCount: this.#retryCount + 1,
+        lastError: errorMessage,
+      });
 
     updated.#addDomainEvent(
-      new NotificationFailed(this.#id)
+      new NotificationFailed(this.#id),
     );
 
     return updated;
   }
 
   markAsDead() {
-    const target = NotificationStatus.dead();
+
+    const target =
+      NotificationStatus.dead();
+
     this.#assertTransition(target);
 
     return this.#clone({
       status: target,
     });
+
   }
 
   retry() {
-    const target = NotificationStatus.retrying();
+
+    const target =
+      NotificationStatus.retrying();
+
     this.#assertTransition(target);
 
-    return this.#clone({
-      status: target,
-    });
+    const updated =
+      this.#clone({
+        status: target,
+      });
+
+    updated.#addDomainEvent(
+      new NotificationRetryScheduled(
+        this.#id,
+      ),
+    );
+
+    return updated;
   }
 
-  // =========================
-  // IMMUTABLE CLONE HELPER
-  // =========================
-
   #clone(overrides = {}) {
+
     return new Notification({
       id: this.#id,
       recipient: this.#recipient,
       message: this.#message,
       channel: this.#channel,
       priority: this.#priority,
-      status: overrides.status || this.#status,
-      createdAt: this.#createdAt,
-      sentAt: overrides.sentAt ?? this.#sentAt,
-      failedAt: overrides.failedAt ?? this.#failedAt,
+
+      status:
+        overrides.status ??
+        this.#status,
+
+      createdAt:
+        this.#createdAt,
+
+      sentAt:
+        overrides.sentAt ??
+        this.#sentAt,
+
+      failedAt:
+        overrides.failedAt ??
+        this.#failedAt,
+
+      retryCount:
+        overrides.retryCount ??
+        this.#retryCount,
+
+      lastError:
+        overrides.lastError ??
+        this.#lastError,
     });
+
   }
 
   equals(other) {
-    return other instanceof Notification && this.#id === other.id;
+
+    return (
+      other instanceof Notification &&
+      other.id === this.#id
+    );
+
+  }
+
+}\n===== src/domain/events/interfaces/EventPublisher.js =====\n
+// src/domain/events/interfaces/EventPublisher.js
+
+export default class EventPublisher {
+  async publish() {
+    throw new Error(
+      "publish not implemented"
+    );
   }
 }\n===== src/domain/events/NotificationCreated.js =====\n
 // src/domain/events/NotificationCreated.js
@@ -684,7 +1255,11 @@ export default class NotificationCreated {
 }\n===== src/domain/events/NotificationFailed.js =====\n
 // src/domain/events/NotificationFailed.js
 
-import { EventCodes } from "../constants/EventCodes.js";
+import { EventCodes }
+from "../constants/EventCodes.js";
+
+import { RedisStreams }
+from "../../infrastructure/messaging/redis/RedisStreams.js";
 
 export default class NotificationFailed {
 
@@ -692,37 +1267,53 @@ export default class NotificationFailed {
   #occurredAt;
 
   constructor(notificationId) {
+
     if (!notificationId) {
-      throw new Error("Notification id is required");
+      throw new Error(
+        "Notification id is required"
+      );
     }
 
-    this.#notificationId = notificationId;
-    this.#occurredAt = new Date();
+    this.#notificationId =
+      notificationId;
 
-    // Object.freeze(this);
+    this.#occurredAt =
+      new Date();
   }
 
-  get notificationId() {
-    return this.#notificationId;
-  }
+  get stream() {
 
-  get occurredAt() {
-    return this.#occurredAt;
+    return RedisStreams
+      .NOTIFICATION_FAILED;
+
   }
 
   toJSON() {
-    return {
-      eventName: "notification.failed",
-      eventCode: EventCodes.NOTIFICATION_FAILED,
 
-      notificationId: this.#notificationId,
-      occurredAt: this.#occurredAt,
+    return {
+      eventName:
+        "notification.failed",
+
+      eventCode:
+        EventCodes.NOTIFICATION_FAILED,
+
+      notificationId:
+        this.#notificationId,
+
+      occurredAt:
+        this.#occurredAt,
     };
+
   }
+
 }\n===== src/domain/events/NotificationRetryScheduled.js =====\n
 // src/domain/events/NotificationRetryScheduled.js
 
-import { EventCodes } from "../constants/EventCodes.js";
+import { EventCodes }
+from "../constants/EventCodes.js";
+
+import { RedisStreams }
+from "../../infrastructure/messaging/redis/RedisStreams.js";
 
 export default class NotificationRetryScheduled {
 
@@ -730,37 +1321,53 @@ export default class NotificationRetryScheduled {
   #occurredAt;
 
   constructor(notificationId) {
+
     if (!notificationId) {
-      throw new Error("Notification id is required");
+      throw new Error(
+        "Notification id is required"
+      );
     }
 
-    this.#notificationId = notificationId;
-    this.#occurredAt = new Date();
+    this.#notificationId =
+      notificationId;
 
-    // Object.freeze(this);
+    this.#occurredAt =
+      new Date();
   }
 
-  get notificationId() {
-    return this.#notificationId;
-  }
+  get stream() {
 
-  get occurredAt() {
-    return this.#occurredAt;
+    return RedisStreams
+      .NOTIFICATION_RETRY;
+
   }
 
   toJSON() {
-    return {
-      eventName: "notification.retry",
-      eventCode: EventCodes.NOTIFICATION_RETRY,
 
-      notificationId: this.#notificationId,
-      occurredAt: this.#occurredAt,
+    return {
+      eventName:
+        "notification.retry",
+
+      eventCode:
+        EventCodes.NOTIFICATION_RETRY,
+
+      notificationId:
+        this.#notificationId,
+
+      occurredAt:
+        this.#occurredAt,
     };
+
   }
+
 }\n===== src/domain/events/NotificationSent.js =====\n
 // src/domain/events/NotificationSent.js
 
-import { EventCodes } from "../constants/EventCodes.js";
+import { EventCodes }
+from "../constants/EventCodes.js";
+
+import { RedisStreams }
+from "../../infrastructure/messaging/redis/RedisStreams.js";
 
 export default class NotificationSent {
 
@@ -768,69 +1375,121 @@ export default class NotificationSent {
   #occurredAt;
 
   constructor(notificationId) {
+
     if (!notificationId) {
-      throw new Error("Notification id is required");
+      throw new Error(
+        "Notification id is required"
+      );
     }
 
-    this.#notificationId = notificationId;
-    this.#occurredAt = new Date();
+    this.#notificationId =
+      notificationId;
 
-    // Object.freeze(this);
+    this.#occurredAt =
+      new Date();
   }
 
-  get notificationId() {
-    return this.#notificationId;
-  }
+  get stream() {
 
-  get occurredAt() {
-    return this.#occurredAt;
+    return RedisStreams
+      .NOTIFICATION_SENT;
+
   }
 
   toJSON() {
+
     return {
-      eventName: "notification.sent",
-      eventCode: EventCodes.NOTIFICATION_SENT,
+      eventName:
+        "notification.sent",
 
-      notificationId: this.#notificationId,
-      occurredAt: this.#occurredAt,
+      eventCode:
+        EventCodes.NOTIFICATION_SENT,
+
+      notificationId:
+        this.#notificationId,
+
+      occurredAt:
+        this.#occurredAt,
     };
-  }
-}\n===== src/domain/events/interfaces/EventPublisher.js =====\n
-// src/domain/events/interfaces/EventPublisher.js
 
-export default class EventPublisher {
-  async publish() {
-    throw new Error(
-      "publish not implemented"
-    );
   }
+
 }\n===== src/domain/repositories/NotificationRepository.js =====\n
 // src/domain/repositories/NotificationRepository.js
 
 export default class NotificationRepository {
+
   constructor() {
-    if (new.target === NotificationRepository) {
-      throw new Error("Cannot instantiate abstract class");
+
+    if (
+      new.target ===
+      NotificationRepository
+    ) {
+      throw new Error(
+        "Cannot instantiate abstract class"
+      );
     }
+
   }
 
   async save() {
-    throw new Error("save() not implemented");
+    throw new Error(
+      "save() not implemented"
+    );
   }
 
   async update() {
-    throw new Error("update() not implemented");
+    throw new Error(
+      "update() not implemented"
+    );
   }
 
   async findById() {
-    throw new Error("findById() not implemented");
+    throw new Error(
+      "findById() not implemented"
+    );
   }
 
   async findByRecipient() {
-    throw new Error("findByRecipient() not implemented");
+    throw new Error(
+      "findByRecipient() not implemented"
+    );
   }
+
+  async findFailedNotifications() {
+    throw new Error(
+      "findFailedNotifications() not implemented"
+    );
+  }
+
 }\n===== src/domain/services/NotificationDomainService.js =====\n
-\n===== src/domain/value-objects/Channel.js =====\n
+// src/domain/services/NotificationDomainService.js
+
+export default class NotificationDomainService {
+
+  process(notification) {
+    return notification.markAsProcessing();
+  }
+
+  sent(notification) {
+    return notification.markAsSent();
+  }
+
+  failed(notification, error) {
+    return notification.markAsFailed(
+      error,
+    );
+  }
+
+  retry(notification) {
+    return notification.retry();
+  }
+
+  dead(notification) {
+    return notification.markAsDead();
+  }
+
+}\n===== src/domain/value-objects/Channel.js =====\n
 // src/domain/value-objects/Channel.js
 const VALID_CHANNELS = Object.freeze([
   "EMAIL",
@@ -1027,42 +1686,103 @@ export default class Priority {
 }\n===== src/interfaces/controllers/NotificationController.js =====\n
 // src/interfaces/controllers/NotificationController.js
 
-import SendNotificationDTO from "../../application/dto/SendNotificationDTO.js";
-import NotificationResponseDTO from "../../application/dto/NotificationResponseDTO.js";
+import SendNotificationDTO
+from "../../application/dto/SendNotificationDTO.js";
+
+import NotificationResponseDTO
+from "../../application/dto/NotificationResponseDTO.js";
 
 export default class NotificationController {
-  constructor(createNotificationUseCase, getNotificationByIdUseCase) {
-    this.createNotificationUseCase = createNotificationUseCase;
-    this.getNotificationByIdUseCase = getNotificationByIdUseCase;
+
+  constructor(
+    createNotificationUseCase,
+    getNotificationByIdUseCase,
+    getNotificationStatusUseCase,
+  ) {
+
+    this.createNotificationUseCase =
+      createNotificationUseCase;
+
+    this.getNotificationByIdUseCase =
+      getNotificationByIdUseCase;
+
+    this.getNotificationStatusUseCase =
+      getNotificationStatusUseCase;
+
   }
 
   async create(req, res, next) {
+
     try {
-      const dto = SendNotificationDTO.fromHttp(req.body);
 
-      const result = await this.createNotificationUseCase.execute(dto);
+      const dto =
+        SendNotificationDTO.fromHttp(
+          req.body,
+        );
 
-      const response = NotificationResponseDTO.fromDomain(result);
+      const notification =
+        await this.createNotificationUseCase.execute(
+          dto,
+        );
 
-      return res.status(201).json(response);
+      return res.status(201).json(
+        NotificationResponseDTO.fromDomain(
+          notification,
+        ),
+      );
+
     } catch (err) {
+
       next(err);
+
     }
+
   }
 
   async getById(req, res, next) {
+
     try {
-      const { id } = req.params;
 
-      const result = await this.getNotificationByIdUseCase.execute(id);
+      const notification =
+        await this.getNotificationByIdUseCase.execute(
+          req.params.id,
+        );
 
-      const response = NotificationResponseDTO.fromDomain(result);
+      return res.status(200).json(
+        NotificationResponseDTO.fromDomain(
+          notification,
+        ),
+      );
 
-      return res.status(200).json(response);
     } catch (err) {
+
       next(err);
+
     }
+
   }
+
+  async getStatus(req, res, next) {
+
+    try {
+
+      const status =
+        await this.getNotificationStatusUseCase.execute(
+          req.params.id,
+        );
+
+      return res.status(200).json({
+        status: status.value,
+      });
+
+    } catch (err) {
+
+      next(err);
+
+    }
+
+  }
+
 }\n===== src/interfaces/middlewares/requestLogger.js =====\n
 \n===== src/interfaces/middlewares/errorHandler.js =====\n
 // src/interfaces/middlewares/errorHandler.js
@@ -1092,23 +1812,70 @@ export default function errorHandler(err, req, res, next) {
 // src/interfaces/routes/notificationRoutes.js
 
 import express from "express";
-import NotificationController from "../controllers/NotificationController.js";
-import CreateNotificationUseCase from "../../application/use-cases/CreateNotificationUseCase.js";
-import GetNotificationByIdUseCase from "../../application/use-cases/GetNotificationByIdUseCase.js";
 
-export default function createNotificationRoutes(repo, publisher) {
-  const router = express.Router();
+import NotificationController
+from "../controllers/NotificationController.js";
 
-  const createUseCase = new CreateNotificationUseCase(repo, publisher);
-  const getByIdUseCase = new GetNotificationByIdUseCase(repo);
+import CreateNotificationUseCase
+from "../../application/use-cases/CreateNotificationUseCase.js";
 
-  const controller = new NotificationController(
-    createUseCase,
-    getByIdUseCase
+import GetNotificationByIdUseCase
+from "../../application/use-cases/GetNotificationByIdUseCase.js";
+
+import GetNotificationStatus
+from "../../application/use-cases/GetNotificationStatus.js";
+
+export default function createNotificationRoutes(
+  repo,
+  publisher
+) {
+
+  const router =
+    express.Router();
+
+  const createUseCase =
+    new CreateNotificationUseCase(
+      repo,
+      publisher
+    );
+
+  const getByIdUseCase =
+    new GetNotificationByIdUseCase(
+      repo
+    );
+
+  const getStatusUseCase =
+    new GetNotificationStatus(
+      repo
+    );
+
+  const controller =
+    new NotificationController(
+      createUseCase,
+      getByIdUseCase,
+      getStatusUseCase
+    );
+
+  router.post(
+    "/",
+    controller.create.bind(
+      controller
+    )
   );
 
-  router.post("/", controller.create.bind(controller));
-  router.get("/:id", controller.getById.bind(controller));
+  router.get(
+    "/:id",
+    controller.getById.bind(
+      controller
+    )
+  );
+
+  router.get(
+    "/:id/status",
+    controller.getStatus.bind(
+      controller
+    )
+  );
 
   return router;
 }\n===== src/server.js =====\n
@@ -1140,30 +1907,54 @@ export function createServer({ repo, publisher } = {}) {
 // src/workers/bootstrap/createConsumerGroup.js
 
 import Redis from "ioredis";
+
 import { RedisStreams }
 from "../../infrastructure/messaging/redis/RedisStreams.js";
 
-const GROUP_NAME =
+const GROUP =
   "notification-workers";
 
 export async function createConsumerGroup() {
 
-  const redis = new Redis();
-
-  try {
-
-    await redis.xgroup(
-      "CREATE",
-      RedisStreams.NOTIFICATION_CREATED,
-      GROUP_NAME,
-      "0",
-      "MKSTREAM"
+  const redis =
+    new Redis(
+      process.env.REDIS_URL,
     );
 
-  } catch (err) {
+  const streams = [
 
-    if (!err.message.includes("BUSYGROUP")) {
-      throw err;
+    RedisStreams.NOTIFICATION_CREATED,
+
+    RedisStreams.NOTIFICATION_SENT,
+
+    RedisStreams.NOTIFICATION_FAILED,
+
+    RedisStreams.NOTIFICATION_RETRY,
+
+  ];
+
+  for (const stream of streams) {
+
+    try {
+
+      await redis.xgroup(
+        "CREATE",
+        stream,
+        GROUP,
+        "0",
+        "MKSTREAM",
+      );
+
+    } catch (err) {
+
+      if (
+        !err.message.includes(
+          "BUSYGROUP",
+        )
+      ) {
+        throw err;
+      }
+
     }
 
   }
@@ -1173,3 +1964,167 @@ export async function createConsumerGroup() {
 }\n===== src/workers/notificationWorker.js =====\n
 // src/workers/notificationWorker.js
 
+import Redis from "ioredis";
+
+
+import {
+ prisma
+}
+from "../infrastructure/database/prismaClient.js";
+
+
+import NotificationRepositoryMySQL
+from "../infrastructure/repositories/NotificationRepositoryMySQL.js";
+
+
+import RedisStreams
+from "../infrastructure/messaging/redis/RedisStreams.js";
+
+
+import ProcessNotificationUseCase
+from "../application/use-cases/ProcessNotificationUseCase.js";
+
+
+import NotificationProviderFactory
+from "../infrastructure/providers/NotificationProviderFactory.js";
+
+
+const GROUP =
+"notification-workers";
+
+
+const CONSUMER =
+`worker-${process.pid}`;
+
+
+
+async function start(){
+
+
+const redis =
+new Redis(
+ process.env.REDIS_URL
+);
+
+
+
+const repository =
+new NotificationRepositoryMySQL(
+ prisma
+);
+
+
+
+const providerFactory =
+new NotificationProviderFactory({
+
+ emailApiKey:
+ process.env.EMAIL_API_KEY,
+
+ emailFrom:
+ process.env.EMAIL_FROM,
+
+ smsApiKey:
+ process.env.SMS_API_KEY
+
+});
+
+
+
+const useCase =
+new ProcessNotificationUseCase(
+ repository,
+ providerFactory
+);
+
+
+
+while(true){
+
+
+const response =
+await redis.xreadgroup(
+"GROUP",
+GROUP,
+CONSUMER,
+"BLOCK",
+5000,
+"COUNT",
+1,
+"STREAMS",
+RedisStreams.NOTIFICATION_CREATED,
+">"
+);
+
+
+
+if(!response)
+continue;
+
+
+
+const messages =
+response[0][1];
+
+
+
+for(
+const [
+id,
+fields
+]
+of messages
+){
+
+
+
+const payload =
+JSON.parse(
+ fields[1]
+);
+
+
+
+try{
+
+
+await useCase.execute(
+ payload.id
+);
+
+
+
+await redis.xack(
+ RedisStreams.NOTIFICATION_CREATED,
+ GROUP,
+ id
+);
+
+
+
+}
+
+catch(err){
+
+console.error(
+err
+);
+
+// niente ACK
+// Redis redelivera
+
+}
+
+
+}
+
+
+
+}
+
+
+}
+
+
+
+start();

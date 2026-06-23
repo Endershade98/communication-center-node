@@ -17,6 +17,8 @@ export default class NotificationMapper {
       createdAt: notification.createdAt,
       sentAt: notification.sentAt,
       failedAt: notification.failedAt,
+      retryCount: notification.retryCount,
+      lastError: notification.lastError,
     };
   }
 
@@ -33,6 +35,8 @@ export default class NotificationMapper {
       createdAt: record.createdAt,
       sentAt: record.sentAt,
       failedAt: record.failedAt,
+      retryCount: record.retryCount,
+      lastError: record.lastError,
     });
   }
 
