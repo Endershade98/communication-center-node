@@ -2,8 +2,8 @@
 
 import Redis from "ioredis";
 
-import { RedisStreams }
-from "../../infrastructure/messaging/redis/RedisStreams.js";
+import { StreamNames }
+from "../constants/StreamNames.js";
 
 const GROUP =
   "notification-workers";
@@ -17,13 +17,13 @@ export async function createConsumerGroup() {
 
   const streams = [
 
-    RedisStreams.NOTIFICATION_CREATED,
+    StreamNames.NOTIFICATION_CREATED,
 
-    RedisStreams.NOTIFICATION_SENT,
+    StreamNames.NOTIFICATION_SENT,
 
-    RedisStreams.NOTIFICATION_FAILED,
+    StreamNames.NOTIFICATION_FAILED,
 
-    RedisStreams.NOTIFICATION_RETRY,
+    StreamNames.NOTIFICATION_RETRY,
 
   ];
 

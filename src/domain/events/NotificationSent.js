@@ -3,8 +3,8 @@
 import { EventCodes }
 from "../constants/EventCodes.js";
 
-import { RedisStreams }
-from "../../infrastructure/messaging/redis/RedisStreams.js";
+import { StreamNames }
+from "../constants/StreamNames.js";
 
 export default class NotificationSent {
 
@@ -28,7 +28,7 @@ export default class NotificationSent {
 
   get stream() {
 
-    return RedisStreams
+    return StreamNames
       .NOTIFICATION_SENT;
 
   }
